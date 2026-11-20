@@ -1,0 +1,31 @@
+{
+  "quick": {
+    "status": "completed",
+    "error": null,
+    "seconds": 23,
+    "words": 238,
+    "findings": 3,
+    "sections": 1,
+    "sources": 16,
+    "evidence": 12,
+    "claims": 6,
+    "limitations": [
+      "The claims do not address user‑experience factors, scalability beyond token counts, or detailed benchmark methodologies."
+    ]
+  },
+  "deep": {
+    "status": "completed",
+    "error": null,
+    "seconds": 56,
+    "words": 573,
+    "findings": 6,
+    "sections": 4,
+    "sources": 40,
+    "evidence": 40,
+    "claims": 16,
+    "limitations": [
+      "The provided claims do not cover all possible QA domains or emerging model architectures, limiting the generalizability of the conclusions.",
+      "Benchmark designs referenced may bias results toward certain task types, and the evidence does not address potential future improvements in either paradigm."
+    ]
+  }
+}

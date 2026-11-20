@@ -4,7 +4,7 @@ import { ArrowRight, Check, Download, KeyRound, Monitor, Moon, Sun, Upload } fro
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { PramaanResearchAnimation } from "@/components/animations/PramaanResearchAnimation";
+import { PramaanLoader } from "@/components/brand/PramaanLoader";
 import { VerificationMark } from "@/components/animations/VerificationMark";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { usePreferences } from "@/components/providers/PreferencesProvider";
@@ -379,8 +379,8 @@ export function AppearanceSettings() {
             description="Disables continuous animations and simplifies transitions. Pramaan also follows your system setting."
           />
           <div className="flex items-center gap-5">
-            <PramaanResearchAnimation autoplay size={88} />
-            <p className="text-[13px] text-ink-muted">Preview — the research animation {prefs.reducedMotion ? "is shown as a still image." : "plays while Pramaan works."}</p>
+            <PramaanLoader size={64} label="Loading animation preview" />
+            <p className="text-[13px] text-ink-muted">Preview — the loading animation {prefs.reducedMotion ? "is shown as a still image." : "plays while Pramaan works."}</p>
           </div>
         </SettingsCard>
       </SettingsSection>

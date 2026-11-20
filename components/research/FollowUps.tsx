@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUp, CornerDownRight } from "lucide-react";
 import { forwardRef, useState } from "react";
-import { PramaanResearchAnimation } from "@/components/animations/PramaanResearchAnimation";
+import { PramaanLoader } from "@/components/brand/PramaanLoader";
 import { Spinner } from "@/components/ui/Spinner";
 import { services } from "@/lib/services";
 import { cn } from "@/lib/utils/cn";
@@ -30,7 +30,7 @@ export function FollowUpThread() {
               <AnimatePresence mode="wait">
                 {f.status === "running" ? (
                   <motion.div key="run" exit={{ opacity: 0 }} className="mt-5 flex items-center gap-4 rounded-xl border border-line bg-surface p-4">
-                    <PramaanResearchAnimation autoplay size={64} label="Researching follow-up" />
+                    <PramaanLoader size={44} label="Researching follow-up" />
                     <div>
                       <p className="text-[14px] font-medium text-ink">Researching follow-up</p>
                       <p className="text-[13px] text-ink-muted">Re-ranking collected evidence and checking for new sources…</p>

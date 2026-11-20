@@ -1,0 +1,54 @@
+# Render Blueprint for the Pramaan AI API (Free plan, native Python runtime — no Docker).
+# Apply from the Render dashboard ("New → Blueprint") when ready — nothing here creates resources by itself.
+# Secrets use `sync: false`: Render prompts for them; they are never stored in this repo.
+services:
+  - type: web
+    name: pramaan-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # One worker: in-process job runner + 512 MB budget. Long timeout for SSE progress streams; the graceful
+    # window lets the job worker hand back in-flight leases on shutdown.
+    startCommand: >-
+      gunicorn app.main:app --worker-class uvicorn.workers.UvicornWorker --workers ${WEB_CONCURRENCY:-1}
+      --bind 0.0.0.0:$PORT --timeout 900 --graceful-timeout 25 --keep-alive 75 --access-logfile - --error-logfile -
+    healthCheckPath: /health
+    branch: main
+    autoDeploy: false
+    envVars:
+      - { key: PYTHON_VERSION, value: "3.12.7" }
+      - { key: ENVIRONMENT, value: production }
+      - { key: WEB_CONCURRENCY, value: "1" }
+      - { key: MALLOC_ARENA_MAX, value: "2" }
+      - { key: RESEARCH_CONCURRENCY, value: "1" }
+      - { key: INDEXING_CONCURRENCY, value: "1" }
+      - { key: MAX_UPLOAD_BYTES, value: "20971520" }
+      - { key: RESEARCH_TIMEOUT_S, value: "600" }
+      - { key: WARMUP_ENABLED, value: "true" }
+      - { key: FIREBASE_PROJECT_ID, value: pramaan-ai-prod }
+      - { key: CORS_ORIGINS, sync: false }
+      - { key: DATABASE_URL, sync: false }
+      - { key: MIGRATIONS_DATABASE_URL, sync: false }
+      # Files — Supabase Storage (S3-compatible API, private bucket)
+      - { key: STORAGE_BACKEND, value: s3 }
+      - { key: S3_ENDPOINT, sync: false }
+      - { key: S3_REGION, sync: false }
+      - { key: S3_BUCKET, sync: false }
+      - { key: S3_ACCESS_KEY_ID, sync: false }
+      - { key: S3_SECRET_ACCESS_KEY, sync: false }
+      # Text generation — Groq
+      - { key: LLM_PROVIDER, value: groq }
+      - { key: GROQ_API_KEY, sync: false }
+      - { key: GROQ_MODEL, value: openai/gpt-oss-120b }
+      # Embeddings — OpenRouter (768-d; must match the schema)
+      - { key: EMBEDDING_PROVIDER, value: openrouter }
+      - { key: OPENROUTER_API_KEY, sync: false }
+      - { key: EMBEDDING_MODEL, value: "nvidia/nemotron-3.5-embed-8b:free" }
+      - { key: EMBEDDING_BATCH_SIZE, value: "128" }
+      - { key: EMBEDDING_DIM, value: "768" }
+      # Redis (optional) — rediss:// URL, e.g. Upstash. Leave empty to run without it.
+      - { key: REDIS_URL, sync: false }
+      # Search
+      - { key: TAVILY_API_KEY, sync: false }
+      - { key: OPENALEX_MAILTO, sync: false }

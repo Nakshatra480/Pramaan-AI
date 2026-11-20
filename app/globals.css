@@ -296,3 +296,17 @@ body {
     transform: translate(-50%, -50%);
   }
 }
+
+/* Research "thinking" word: a soft light sweep across the text. */
+.thinking-shimmer {
+  background: linear-gradient(90deg, var(--ink-muted) 0%, var(--ink-muted) 40%, var(--ink) 50%, var(--ink-muted) 60%, var(--ink-muted) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: thinking-shimmer 2.2s linear infinite;
+}
+@keyframes thinking-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -150% 0; }
+}

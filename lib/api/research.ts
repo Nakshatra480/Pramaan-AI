@@ -164,10 +164,6 @@ export const apiResearchService = {
     apiEvents.notify();
     return get(id);
   },
-  async setSaved(id: string, saved: boolean) {
-    await apiFetch(`/research/${id}`, { method: "PATCH", body: { saved } });
-    apiEvents.notify();
-  },
   async setVisibility(id: string, visibility: Research["visibility"]): Promise<string | undefined> {
     const r = await apiFetch<{ visibility: string; shareId: string | null }>(`/research/${id}/share`, { method: "PUT", body: { visibility } });
     apiEvents.notify();

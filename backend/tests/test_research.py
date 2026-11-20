@@ -140,7 +140,7 @@ async def test_save_rename_share_follow_up(client: AsyncClient) -> None:
     await get_job_runner().drain()
     thread = (await client.get(f"/api/v1/research/{rid}", headers=ALICE)).json()["followUps"]
     assert thread[0]["status"] == "complete" and thread[0]["answer"]
-    assert max((int(n) for n in re.findall(r"\[(\d+)\]", " ".join(thread[0]["answer"]))), default=1) <= len(r["report"]["citations"])
+    assert max((int(n) for n in re.findall(r"\[(\d+)\]", " ".join(thread[0]["answer"]))), default=1) <= len(r["sourceIds"])
 
 
 async def test_cancel(client: AsyncClient) -> None:

@@ -97,7 +97,7 @@ const PRIVACY: { title: string; body: string[] }[] = [
   {
     title: "Your controls",
     body: [
-      "Settings → Privacy lets you export everything as JSON, delete all research, or set automatic deletion of unsaved research after 30, 90 or 365 days.",
+      "Settings → Privacy lets you export everything as JSON, delete all research, or set automatic deletion of research after 30, 90 or 365 days.",
       "Deleting your account immediately and permanently removes your sign-in, the projects you own, your library files and your research.",
     ],
   },

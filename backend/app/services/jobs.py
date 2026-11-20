@@ -193,7 +193,7 @@ async def sweep() -> dict[str, int]:
         # Follow-up answers are fire-and-forget; close any left running by a restart.
         cutoff = now - timedelta(minutes=10)
         for msg in (await db.scalars(select(Message).where(Message.status == "running", Message.created_at < cutoff))).all():
-            msg.status = "complete"
+            msg.status = "failed"
             msg.answer = ["This follow-up was interrupted before it finished. Please ask again."]
             stats["follow_ups_closed"] += 1
         await db.commit()

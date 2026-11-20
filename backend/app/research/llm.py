@@ -169,24 +169,29 @@ class ResearchLLM:
             return draft
         return _fallback_report(query, usable, weak)
 
-    async def follow_up(self, question: str, evidence: list[EvidenceItem]) -> list[str]:
+    async def follow_up(self, question: str, evidence: list[EvidenceItem], history: list[tuple[str, str]] | None = None) -> list[str]:
+        """Answer a follow-up from this research's evidence. `history` is earlier (question, answer) pairs
+        in the thread, so questions like "what about the second one?" resolve."""
         listing = "\n".join(f"{e.id}: {e.passage}" for e in evidence)
+        thread = "\n".join(f"Q: {q}\nA: {a}" for q, a in (history or [])[-3:])
         data = await self._ask(
             "follow_up",
-            f"Follow-up question: {question}\n\nEvidence from the original research:\n{listing}\n\n"
-            'Answer in 1-2 short paragraphs using only this evidence; cite like [E3]. If evidence is insufficient, say so. Return {"paragraphs": ["..."]}',
-            max_tokens=700,
+            (f"Earlier follow-ups in this thread:\n{thread}\n\n" if thread else "")
+            + f"Follow-up question: {question}\n\nEvidence from the original research:\n{listing}\n\n"
+            "Answer the question directly in 1-3 short paragraphs using ONLY this evidence. After each sentence that relies on a "
+            "passage, cite it like [E3]. Do not repeat yourself or restate the original report. If the evidence doesn't answer the "
+            'question, say so plainly and suggest starting a new research. Return {"paragraphs": ["..."]}',
+            max_tokens=2400,  # reasoning models spend part of the budget thinking; 700 truncated answers
         )
-        if isinstance(data, dict) and isinstance(data.get("paragraphs"), list) and data["paragraphs"]:
-            return [str(p) for p in data["paragraphs"]][:3]
+        if isinstance(data, dict) and isinstance(data.get("paragraphs"), list):
+            paragraphs = [str(p).strip() for p in data["paragraphs"] if isinstance(p, str) and p.strip()]
+            if paragraphs:
+                return paragraphs[:3]
         q = terms(question)
-        best = sorted(evidence, key=lambda e: overlap(q, terms(e.passage)), reverse=True)[:2]
-        if not best or overlap(q, terms(best[0].passage)) == 0:
-            return ["Pramaan couldn't find enough evidence in this research to answer that. Try starting a new research session."]
-        return [
-            f"From the evidence already collected: “{best[0].passage}” [{best[0].id}]"
-            + (f" Related evidence notes: “{best[1].passage}” [{best[1].id}]" if len(best) > 1 else "")
-        ]
+        best = [e for e in sorted(evidence, key=lambda e: overlap(q, terms(e.passage)), reverse=True)[:2] if overlap(q, terms(e.passage)) > 0]
+        if not best:
+            return ["This research doesn't contain evidence that answers that. Try starting a new research session for it."]
+        return [" ".join(f"“{e.passage}” [{e.id}]" for e in best)]
 
 
 # ------------------------------------------------------------------ budgets

@@ -1,7 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
-import { Bookmark, ClipboardCopy, Download, FileCode2, FileText, FileType2, FolderInput, Link2, MessageSquarePlus, MoreHorizontal, Pencil, Printer, RotateCcw, Share2, Trash2 } from "lucide-react";
+import { ClipboardCopy, Download, FileCode2, FileText, FileType2, FolderInput, Link2, MessageSquarePlus, MoreHorizontal, Pencil, Printer, RotateCcw, Share2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { VerificationMark } from "@/components/animations/VerificationMark";
@@ -26,15 +25,8 @@ export function ResearchActions({ onFollowUp }: { onFollowUp: () => void }) {
   const [moveOpen, setMoveOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
 
-  const toggleSave = async () => {
-    setSaving(true);
-    await services.research.setSaved(research.id, !research.saved);
-    setSaving(false);
-    toast({ title: research.saved ? "Removed from saved." : "Research saved.", tone: research.saved ? "info" : "success" });
-  };
 
 
   const md = () => researchToMarkdown(research, sources);
@@ -68,19 +60,6 @@ export function ResearchActions({ onFollowUp }: { onFollowUp: () => void }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2" data-print-hide>
-      <Button variant={research.saved ? "sage" : "secondary"} size="sm" onClick={toggleSave} disabled={saving} aria-pressed={research.saved} className="min-w-[84px]">
-        <AnimatePresence mode="wait" initial={false}>
-          {research.saved ? (
-            <motion.span key="saved" className="inline-flex items-center gap-1.5" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
-              <VerificationMark size={15} tone="sage" /> Saved
-            </motion.span>
-          ) : (
-            <motion.span key="save" className="inline-flex items-center gap-1.5" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <Bookmark className="size-4" /> Save
-            </motion.span>
-          )}
-        </AnimatePresence>
-      </Button>
       <Button variant="secondary" size="sm" leading={<Share2 className="size-4" />} onClick={() => setShareOpen(true)}>
         Share
       </Button>

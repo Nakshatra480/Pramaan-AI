@@ -1,6 +1,6 @@
 import type { Research, ResearchMode } from "@/types";
 
-export type HistoryFilter = "all" | "saved" | "project" | "independent" | "attention";
+export type HistoryFilter = "all" | "project" | "independent" | "attention";
 export type HistorySort = "newest" | "oldest" | "verified";
 
 export function filterHistory(
@@ -13,8 +13,6 @@ export function filterHistory(
     if (opts.projectId && r.projectId !== opts.projectId) return false;
     if (opts.mode && r.mode !== opts.mode) return false;
     switch (opts.filter ?? "all") {
-      case "saved":
-        return r.saved;
       case "project":
         return r.projectId !== null;
       case "independent":

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { AlertTriangle, ArrowDownUp, Bookmark, FolderClosed, Search, X } from "lucide-react";
+import { AlertTriangle, ArrowDownUp, FolderClosed, Search, X } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { MODES } from "@/components/research/research-options";
@@ -86,7 +86,6 @@ export function HistoryView() {
         onChange={setFilter}
         items={[
           { value: "all", label: "All" },
-          { value: "saved", label: "Saved" },
           { value: "project", label: "In projects" },
           { value: "independent", label: "Independent" },
           { value: "attention", label: "Needs attention" },
@@ -139,7 +138,6 @@ export function HistoryView() {
                           <span className="min-w-0 flex items-center gap-2">
                             <span className={cn("size-1.5 rounded-full shrink-0", r.status === "running" ? "bg-accent animate-pulse-soft" : failed ? "bg-warn" : "bg-sage-deep")} aria-hidden />
                             <span className="text-[14.5px] text-ink truncate">{r.title}</span>
-                            {r.saved && <Bookmark className="size-3.5 text-sage-ink fill-sage shrink-0" aria-label="Saved" />}
                             {failed && (
                               <span className="inline-flex items-center gap-1 text-[11.5px] text-warn shrink-0">
                                 <AlertTriangle className="size-3" />

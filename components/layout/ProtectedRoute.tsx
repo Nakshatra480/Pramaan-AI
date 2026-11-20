@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import { PramaanResearchAnimation } from "@/components/animations/PramaanResearchAnimation";
+import { PramaanLoader } from "@/components/brand/PramaanLoader";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -51,8 +51,8 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
     return (
       <div className="min-h-dvh grid place-items-center bg-bg" aria-busy="true">
         <div className="flex flex-col items-center gap-4">
-          <PramaanResearchAnimation autoplay size={120} label="Opening your workspace" />
-          <p className="text-[13px] text-ink-muted">Opening your workspace…</p>
+          <PramaanLoader size={76} label="Opening your workspace" />
+          <p className="mt-2 text-[14px] text-ink-muted">Opening your workspace…</p>
           <ServerWakeHint active className="max-w-xs text-center text-[12.5px] leading-snug text-ink-muted" />
         </div>
       </div>

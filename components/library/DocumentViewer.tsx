@@ -5,7 +5,7 @@ import { ChevronLeft, Download, FolderPlus, RotateCcw, Search, Trash2 } from "lu
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { PramaanResearchAnimation } from "@/components/animations/PramaanResearchAnimation";
+import { PramaanLoader } from "@/components/brand/PramaanLoader";
 import { VerificationMark } from "@/components/animations/VerificationMark";
 import { useToast } from "@/components/providers/ToastProvider";
 import { Badge } from "@/components/ui/Badge";
@@ -129,7 +129,7 @@ export function DocumentViewer({ documentId }: { documentId: string }) {
           <div className="mt-10 border-t border-line pt-10">
             {processing ? (
               <div className="flex flex-col items-center text-center py-10">
-                <PramaanResearchAnimation autoplay size={140} label="Indexing document" />
+                <PramaanLoader size={88} label="Indexing document" />
                 <p className="mt-6 text-[15px] font-medium text-ink">Preparing this document for research</p>
                 <div className="mt-4 w-full max-w-xs">
                   <IndexingProgress stage={doc.status} />

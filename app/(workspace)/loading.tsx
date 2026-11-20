@@ -1,9 +1,9 @@
-import { PramaanResearchAnimation } from "@/components/animations/PramaanResearchAnimation";
+import { PramaanLoader } from "@/components/brand/PramaanLoader";
 
 export default function Loading() {
   return (
     <div className="grid place-items-center min-h-[60vh]" aria-busy="true" aria-label="Loading">
-      <PramaanResearchAnimation autoplay size={96} label="Loading" />
+      <PramaanLoader size={64} label="Loading" />
     </div>
   );
 }

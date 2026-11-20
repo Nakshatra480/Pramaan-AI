@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.research.dedupe import dedupe_report
 from app.research.deps import ResearchDeps
 from app.research.nodes.common import node
 from app.research.state import ResearchState
@@ -17,5 +18,6 @@ async def synthesis(state: ResearchState, deps: ResearchDeps) -> dict[str, Any]:
         mode=state["mode"].value,
         length=state.get("response_length", "balanced"),
     )
+    draft = dedupe_report(draft)  # no fact stated twice, in any mode or fallback
     await deps.reporter.complete("synthesizing", "Report drafted from verified claims")
     return {"draft": draft}

@@ -143,9 +143,14 @@ class ResearchLLM:
             "Write a research report using ONLY these claims. After each sentence that relies on a claim, cite it like [C2]. "
             "Mark partially supported claims with hedged language. Do not cite anything else. Do not add interpretation, implications, "
             "recommendations or background that the claims do not state; if the claims don't answer part of the question, say so plainly.\n"
-            f"Shape: executive summary of {shape.summary} paragraph(s); {shape.findings} key findings; "
-            f"{shape.sections} analysis section(s) of {shape.paragraphs} paragraph(s) each, each paragraph {shape.sentences} sentences. "
-            "Use every claim at least once if it is relevant.\n"
+            "Never repeat yourself: state each fact once in the whole report. Each section has a different job:\n"
+            f"- summary: {shape.summary} short paragraph(s) giving the overall answer in your own words — the main conclusion and how "
+            "strong the evidence is. Do not list or copy the individual findings.\n"
+            f"- findings: up to {shape.findings} findings, each about different claims (never reuse a claim in another finding); "
+            "a short title and a 1–3 sentence body.\n"
+            f"- analysis: up to {shape.sections} section(s) of {shape.paragraphs} paragraph(s), {shape.sentences} sentences each. Every paragraph "
+            "must relate two or more claims to each other (agreement, contrast, trade-off, gap) and must not restate a finding's sentence. "
+            "Return an empty list if there is nothing to relate. Fewer, non-repeating sentences are better than a longer report.\n"
             'Return {"summary": ["paragraph"], "findings": [{"title": "...", "body": "... [C1]", "claims": ["C1"]}], '
             '"analysis": [{"heading": "...", "paragraphs": ["... [C3]"]}], "limitations": ["..."]}',
             context=instructions,
@@ -199,8 +204,8 @@ def verify_budget(n_claims: int) -> int:
 
 _SHAPES: dict[str, dict[str, int]] = {
     "quick": {"summary": 1, "findings": 3, "sections": 1, "paragraphs": 1, "tokens": 2600},
-    "standard": {"summary": 2, "findings": 4, "sections": 2, "paragraphs": 2, "tokens": 3600},
-    "deep": {"summary": 3, "findings": 6, "sections": 4, "paragraphs": 2, "tokens": 5600},
+    "standard": {"summary": 1, "findings": 5, "sections": 2, "paragraphs": 1, "tokens": 3600},
+    "deep": {"summary": 2, "findings": 8, "sections": 3, "paragraphs": 2, "tokens": 5600},
 }
 _LENGTH: dict[str, tuple[int, str, float]] = {"concise": (-1, "2-3", 0.7), "balanced": (0, "3-4", 1.0), "comprehensive": (1, "4-6", 1.4)}
 
@@ -217,14 +222,16 @@ class ReportShape:
 
 def report_shape(mode: str, length: str, n_claims: int) -> ReportShape:
     """Report structure by research mode (depth) and the user's response-length preference,
-    bounded by how many verified claims there are to write about (audit H-02, M-04)."""
+    bounded by how many verified claims there are to write about. Each claim's fact is stated once,
+    so the size follows the claims: one finding per claim at most, and an analysis section only for
+    every three claims (analysis relates claims; it never restates them)."""
     base = _SHAPES.get(mode, _SHAPES["standard"])
     delta, sentences, scale = _LENGTH.get(length, _LENGTH["balanced"])
     n = max(1, n_claims)
     return ReportShape(
-        summary=max(1, base["summary"] + delta),
+        summary=max(1, min(base["summary"] + delta, 1 + n // 6)),
         findings=max(1, min(n, base["findings"] + delta)),
-        sections=max(1, min(n, base["sections"] + delta)),
+        sections=max(0, min(n // 3, base["sections"] + delta)),
         paragraphs=max(1, base["paragraphs"] + (1 if delta > 0 else 0)),
         sentences=sentences,
         tokens=int(base["tokens"] * scale),
@@ -287,18 +294,16 @@ def _fallback_report(query: str, usable: list[ClaimItem], weak: list[ClaimItem])
             analysis=[],
             limitations=["The sources found did not contain passages that directly support an answer.", *_weak_limitations(weak)],
         )
-    top = usable[:4]
 
     def cite(c: ClaimItem) -> str:
         text = c.text.rstrip(".")
         hedge = "Evidence partially indicates that " if c.status == ClaimStatus.partially_supported else ""
         return f"{hedge}{text[:1].lower() + text[1:] if hedge else text} [{c.id}]."
 
-    summary = [" ".join(cite(c) for c in top[:2])]
-    if len(top) > 2:
-        summary.append(" ".join(cite(c) for c in top[2:4]))
+    # Each claim appears once: the strongest in the summary, the next ones as findings, the rest below.
+    lead, top, rest = usable[:1], usable[1:5], usable[5:]
+    summary = [" ".join(cite(c) for c in lead)]
     findings = [{"title": _title(c.text), "body": cite(c), "claims": [c.id]} for c in top]
-    rest = usable[4:]
     analysis = [{"heading": "Supporting evidence", "paragraphs": [" ".join(cite(c) for c in rest[i : i + 3]) for i in range(0, len(rest), 3)]}] if rest else []
     limitations = [
         "This report was assembled extractively from source passages without model synthesis; wording follows the sources closely.",

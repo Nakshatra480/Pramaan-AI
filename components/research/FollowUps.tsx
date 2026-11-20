@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, ArrowUp, CornerDownRight, RotateCcw } from "lucide-react";
-import { forwardRef, useState } from "react";
+import { forwardRef, useEffect, useState, useSyncExternalStore } from "react";
 import { PramaanLoader } from "@/components/brand/PramaanLoader";
 import { useToast } from "@/components/providers/ToastProvider";
 import { Button } from "@/components/ui/Button";
@@ -10,6 +10,8 @@ import { Spinner } from "@/components/ui/Spinner";
 import { services } from "@/lib/services";
 import { cn } from "@/lib/utils/cn";
 import { formatRelative } from "@/lib/utils/format";
+import { pendingFollowUps, visiblePending } from "@/lib/utils/pending-follow-ups";
+import type { FollowUp } from "@/types";
 import { useResearch } from "./ResearchContext";
 import { RichText } from "./RichText";
 
@@ -17,22 +19,51 @@ const SUGGESTIONS: Record<string, string[]> = {
   default: ["What are the strongest counter-arguments?", "Which findings are most likely to change in the next year?", "Summarise this for a non-specialist."],
 };
 
-export function FollowUpThread() {
-  const { research, readOnly } = useResearch();
+/**
+ * Ask a follow-up with instant feedback: the question and its loading card appear immediately, before
+ * the request and the research reload finish. Resolves false (and removes the card) if it couldn't be sent.
+ */
+function useAskFollowUp(researchId: string) {
   const toast = useToast();
-  const running = research.followUps.some((f) => f.status === "running");
-  if (!research.followUps.length) return null;
-  const askAgain = async (question: string) => {
+  return async (question: string): Promise<boolean> => {
+    const key = pendingFollowUps.add(researchId, question);
+    requestAnimationFrame(() => document.getElementById(key)?.scrollIntoView({ behavior: "smooth", block: "center" }));
     try {
-      await services.research.followUp(research.id, question);
+      pendingFollowUps.accept(key, await services.research.followUp(researchId, question));
+      return true;
     } catch (e) {
+      pendingFollowUps.remove(key);
       toast({ title: "Couldn't ask that follow-up", description: e instanceof Error ? e.message : "Please try again.", tone: "error" });
+      return false;
     }
   };
+}
+
+/** Loaded follow-ups plus the ones just asked (shown as running until the server's copy loads). */
+function useThread(): { thread: (FollowUp & { domId: string })[]; busy: boolean } {
+  const { research } = useResearch();
+  const all = useSyncExternalStore(pendingFollowUps.subscribe, pendingFollowUps.snapshot, pendingFollowUps.snapshot);
+  const loadedIds = research.followUps.map((f) => f.id);
+  const loadedKey = loadedIds.join(",");
+  useEffect(() => pendingFollowUps.settle(loadedKey ? loadedKey.split(",") : []), [loadedKey]);
+  const pending = visiblePending(all, research.id, loadedIds);
+  const thread = [
+    ...research.followUps.map((f) => ({ ...f, domId: `follow-up-${f.id}` })),
+    ...pending.map((p) => ({ id: p.key, domId: p.key, question: p.question, createdAt: p.createdAt, status: "running" as const, answer: [] })),
+  ];
+  return { thread, busy: thread.some((f) => f.status === "running") };
+}
+
+export function FollowUpThread() {
+  const { research, readOnly } = useResearch();
+  const { thread, busy: running } = useThread();
+  const ask = useAskFollowUp(research.id);
+  if (!thread.length) return null;
+  const askAgain = (question: string) => void ask(question);
   return (
     <section aria-label="Follow-up research" className="mt-16 max-w-[720px] space-y-10">
-      {research.followUps.map((f) => (
-        <motion.div key={f.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="border-t border-line pt-8">
+      {thread.map((f) => (
+        <motion.div key={f.id} id={f.domId} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="border-t border-line pt-8">
           <div className="flex items-start gap-3">
             <CornerDownRight className="size-4 mt-2 text-ink-faint shrink-0" />
             <div className="min-w-0 flex-1">
@@ -77,25 +108,16 @@ export function FollowUpThread() {
 
 export const FollowUpComposer = forwardRef<HTMLTextAreaElement>(function FollowUpComposer(_, ref) {
   const { research, readOnly } = useResearch();
-  const toast = useToast();
+  const { busy: running } = useThread();
+  const ask = useAskFollowUp(research.id);
   const [q, setQ] = useState("");
-  const [sending, setSending] = useState(false);
-  const running = research.followUps.some((f) => f.status === "running") || sending;
   if (readOnly) return null;
 
   const submit = async (question = q) => {
     const text = question.trim();
     if (!text || running) return;
-    setSending(true);
-    try {
-      await services.research.followUp(research.id, text);
-      setQ("");
-    } catch (e) {
-      // Keep what they typed so nothing is lost.
-      toast({ title: "Couldn't ask that follow-up", description: e instanceof Error ? e.message : "Please try again.", tone: "error" });
-    } finally {
-      setSending(false);
-    }
+    setQ(""); // cleared at once; restored if sending fails so nothing is lost
+    if (!(await ask(text)) && question === q) setQ(text);
   };
 
   return (

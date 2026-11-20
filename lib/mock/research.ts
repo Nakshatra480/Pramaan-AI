@@ -297,28 +297,15 @@ export const researchService = {
     });
   },
 
-  async followUp(id: string, question: string): Promise<void> {
+  async followUp(id: string, question: string): Promise<string> {
     const fid = uid("f");
+    await latency(200);
     db.write((d) => {
       const r = d.research.find((x) => x.id === id);
       r?.followUps.push({ id: fid, question, createdAt: new Date().toISOString(), status: "running", answer: [] });
     });
-    await latency(4200);
-    db.write((d) => {
-      const r = d.research.find((x) => x.id === id);
-      const f = r?.followUps.find((x) => x.id === fid);
-      if (!r || !f) return;
-      f.status = "complete";
-      const cites = r.report?.citations ?? [];
-      const c1 = cites[0] ? `[${cites[0].index}]` : "";
-      const c2 = cites[1] ? `[${cites[1].index}]` : "";
-      f.answer = [
-        `Building on the evidence already collected for this research, Pramaan re-ranked ${Math.min(r.evidence.length, 9)} passages against your follow-up. The most relevant evidence is consistent with the original findings ${c1}${c2}.`,
-        r.claims.some((c) => c.status === "insufficient_evidence")
-          ? "Some parts of this question depend on claims marked as having insufficient evidence, so Pramaan has not presented them as established facts. Try Deep Research to broaden the search."
-          : "No new contradictions were found. Deep Research can broaden discovery if you need additional sources.",
-      ];
-    });
+    void finishFollowUp(id, fid);
+    return fid;
   },
 };
 
@@ -345,5 +332,25 @@ function complete(id: string) {
       href: `/research/${r.id}`,
       createdAt: r.completedAt,
     });
+  });
+}
+
+/** Demo mode: completes a follow-up after a realistic delay. */
+async function finishFollowUp(id: string, fid: string) {
+  await latency(4200);
+  db.write((d) => {
+    const r = d.research.find((x) => x.id === id);
+    const f = r?.followUps.find((x) => x.id === fid);
+    if (!r || !f) return;
+    f.status = "complete";
+    const cites = r.report?.citations ?? [];
+    const c1 = cites[0] ? `[${cites[0].index}]` : "";
+    const c2 = cites[1] ? `[${cites[1].index}]` : "";
+    f.answer = [
+      `Building on the evidence already collected for this research, Pramaan re-ranked ${Math.min(r.evidence.length, 9)} passages against your follow-up. The most relevant evidence is consistent with the original findings ${c1}${c2}.`,
+      r.claims.some((c) => c.status === "insufficient_evidence")
+        ? "Some parts of this question depend on claims marked as having insufficient evidence, so Pramaan has not presented them as established facts. Try Deep Research to broaden the search."
+        : "No new contradictions were found. Deep Research can broaden discovery if you need additional sources.",
+    ];
   });
 }

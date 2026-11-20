@@ -185,8 +185,10 @@ export const apiResearchService = {
     await apiFetch("/research", { method: "DELETE", query: { confirm: "delete-all" } });
     apiEvents.notify();
   },
-  async followUp(id: string, question: string): Promise<void> {
-    await apiFetch(`/research/${id}/follow-ups`, { method: "POST", body: { question } });
-    apiEvents.notify(); // shows the running follow-up; `get` keeps polling until it completes
+  /** Returns the follow-up's id. The UI shows it at once (optimistically); `get` keeps polling until it completes. */
+  async followUp(id: string, question: string): Promise<string> {
+    const f = await apiFetch<{ id: string }>(`/research/${id}/follow-ups`, { method: "POST", body: { question } });
+    apiEvents.notify();
+    return f.id;
   },
 };

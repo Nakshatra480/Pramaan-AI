@@ -504,7 +504,7 @@ export function PrivacySettings() {
 
   return (
     <SettingsPage title="Privacy" description="Your library and research are private to you unless you share them.">
-      <SettingsSection title="Data retention" description="Unsaved research older than this is deleted automatically (checked every hour). Saved research is always kept.">
+      <SettingsSection title="Data retention" description="Research older than this is deleted automatically (checked every hour).">
         <label htmlFor="retention" className="sr-only">
           Data retention
         </label>

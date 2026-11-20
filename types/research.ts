@@ -80,7 +80,7 @@ export interface FollowUp {
   id: string;
   question: string;
   createdAt: string;
-  status: "running" | "complete";
+  status: "running" | "complete" | "failed";
   answer: RichText[];
 }
 

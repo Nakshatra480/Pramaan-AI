@@ -249,13 +249,6 @@ export const researchService = {
     return db.read().research.find((x) => x.id === id) ?? null;
   },
 
-  async setSaved(id: string, saved: boolean) {
-    await latency(200);
-    db.write((d) => {
-      const r = d.research.find((x) => x.id === id);
-      if (r) r.saved = saved;
-    });
-  },
 
   async setVisibility(id: string, visibility: Research["visibility"]): Promise<string | undefined> {
     await latency(240);

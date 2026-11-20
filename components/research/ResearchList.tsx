@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Bookmark, FolderClosed } from "lucide-react";
+import { AlertTriangle, FolderClosed } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/utils/cn";
@@ -22,7 +22,6 @@ export function ResearchRow({ research, project, showProject = true }: { researc
       <span className="flex-1 min-w-0">
         <span className="flex items-center gap-2">
           <span className="text-[15px] font-medium text-ink truncate group-hover:underline decoration-line-strong underline-offset-4">{research.title}</span>
-          {research.saved && <Bookmark className="size-3.5 text-sage-ink fill-sage shrink-0" aria-label="Saved" />}
         </span>
         <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] text-ink-muted tabular">
           {research.status === "running" ? (

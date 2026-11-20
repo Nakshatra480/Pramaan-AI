@@ -1,9 +1,11 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, CornerDownRight } from "lucide-react";
+import { AlertTriangle, ArrowUp, CornerDownRight, RotateCcw } from "lucide-react";
 import { forwardRef, useState } from "react";
 import { PramaanLoader } from "@/components/brand/PramaanLoader";
+import { useToast } from "@/components/providers/ToastProvider";
+import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { services } from "@/lib/services";
 import { cn } from "@/lib/utils/cn";
@@ -16,8 +18,17 @@ const SUGGESTIONS: Record<string, string[]> = {
 };
 
 export function FollowUpThread() {
-  const { research } = useResearch();
+  const { research, readOnly } = useResearch();
+  const toast = useToast();
+  const running = research.followUps.some((f) => f.status === "running");
   if (!research.followUps.length) return null;
+  const askAgain = async (question: string) => {
+    try {
+      await services.research.followUp(research.id, question);
+    } catch (e) {
+      toast({ title: "Couldn't ask that follow-up", description: e instanceof Error ? e.message : "Please try again.", tone: "error" });
+    }
+  };
   return (
     <section aria-label="Follow-up research" className="mt-16 max-w-[720px] space-y-10">
       {research.followUps.map((f) => (
@@ -32,9 +43,19 @@ export function FollowUpThread() {
                   <motion.div key="run" exit={{ opacity: 0 }} className="mt-5 flex items-center gap-4 rounded-xl border border-line bg-surface p-4">
                     <PramaanLoader size={44} label="Researching follow-up" />
                     <div>
-                      <p className="text-[14px] font-medium text-ink">Researching follow-up</p>
-                      <p className="text-[13px] text-ink-muted">Re-ranking collected evidence and checking for new sources…</p>
+                      <p className="text-[14px] font-medium text-ink">Answering from this research</p>
+                      <p className="text-[13px] text-ink-muted">Finding the most relevant passages among the evidence already collected…</p>
                     </div>
+                  </motion.div>
+                ) : f.status === "failed" ? (
+                  <motion.div key="failed" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-5 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface p-4">
+                    <AlertTriangle className="size-4 text-warn shrink-0" />
+                    <p className="flex-1 min-w-[200px] text-[13.5px] text-ink-2">{f.answer[0] ?? "This follow-up couldn't be answered."}</p>
+                    {!readOnly && (
+                      <Button size="sm" variant="secondary" leading={<RotateCcw className="size-3.5" />} disabled={running} onClick={() => void askAgain(f.question)}>
+                        Ask again
+                      </Button>
+                    )}
                   </motion.div>
                 ) : (
                   <motion.div key="done" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 prose-report">
@@ -56,14 +77,25 @@ export function FollowUpThread() {
 
 export const FollowUpComposer = forwardRef<HTMLTextAreaElement>(function FollowUpComposer(_, ref) {
   const { research, readOnly } = useResearch();
+  const toast = useToast();
   const [q, setQ] = useState("");
-  const running = research.followUps.some((f) => f.status === "running");
+  const [sending, setSending] = useState(false);
+  const running = research.followUps.some((f) => f.status === "running") || sending;
   if (readOnly) return null;
 
   const submit = async (question = q) => {
-    if (!question.trim() || running) return;
-    setQ("");
-    await services.research.followUp(research.id, question.trim());
+    const text = question.trim();
+    if (!text || running) return;
+    setSending(true);
+    try {
+      await services.research.followUp(research.id, text);
+      setQ("");
+    } catch (e) {
+      // Keep what they typed so nothing is lost.
+      toast({ title: "Couldn't ask that follow-up", description: e instanceof Error ? e.message : "Please try again.", tone: "error" });
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -90,7 +122,8 @@ export const FollowUpComposer = forwardRef<HTMLTextAreaElement>(function FollowU
               void submit();
             }
           }}
-          placeholder="Ask a follow-up — Pramaan keeps the evidence from this research…"
+          maxLength={1000}
+          placeholder="Ask a follow-up — Pramaan answers from the evidence in this research…"
           className="block w-full resize-none bg-transparent outline-none focus-visible:outline-none px-4 pt-4 pb-2 text-[15px] placeholder:text-ink-faint min-h-[56px]"
         />
         <div className="flex items-center justify-between gap-2 px-3 pb-3">

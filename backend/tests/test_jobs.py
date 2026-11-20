@@ -242,6 +242,10 @@ async def test_stale_follow_ups_are_closed_by_the_sweep(client: AsyncClient) -> 
         db.add(Message(conversation_id=conv.id, question="q?", answer=[], status="running", created_at=datetime.now(UTC) - timedelta(minutes=30)))
         await db.commit()
     assert (await sweep())["follow_ups_closed"] == 1
+    async with get_sessionmaker()() as db:
+        from sqlalchemy import select
+
+        assert (await db.scalar(select(Message.status).where(Message.question == "q?"))) == "failed"  # offered as "Ask again", not shown as an answer
 
 
 async def test_research_concurrency_is_one(client: AsyncClient) -> None:

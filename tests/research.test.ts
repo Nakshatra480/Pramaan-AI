@@ -25,10 +25,10 @@ describe("mock research data integrity", () => {
 });
 
 describe("history filtering", () => {
-  it("filters saved and sorts by verified claims", () => {
-    const saved = filterHistory(RESEARCH, { filter: "saved", sort: "verified" });
-    expect(saved.every((r) => r.saved)).toBe(true);
-    expect(saved[0].metrics.verifiedClaims).toBeGreaterThanOrEqual(saved[saved.length - 1].metrics.verifiedClaims);
+  it("filters project research and sorts by verified claims", () => {
+    const inProject = filterHistory(RESEARCH, { filter: "project", sort: "verified" });
+    expect(inProject.every((r) => r.projectId)).toBe(true);
+    expect(inProject[0].metrics.verifiedClaims).toBeGreaterThanOrEqual(inProject[inProject.length - 1].metrics.verifiedClaims);
   });
   it("surfaces failed sessions under needs attention", () => {
     const ids = filterHistory(RESEARCH, { filter: "attention" }).map((r) => r.id);

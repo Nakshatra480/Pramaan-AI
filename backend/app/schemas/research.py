@@ -110,7 +110,7 @@ class FollowUpOut(ApiModel):
     id: uuid.UUID
     question: str
     created_at: datetime
-    status: Literal["running", "complete"]
+    status: Literal["running", "complete", "failed"]
     answer: list[str]
 
 

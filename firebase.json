@@ -1,0 +1,21 @@
+{
+  "emulators": {
+    "auth": {
+      "host": "127.0.0.1",
+      "port": 9099
+    },
+    "ui": {
+      "enabled": false
+    },
+    "singleProjectMode": true
+  },
+  "auth": {
+    "providers": {
+      "emailPassword": true,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "Pramaan AI",
+        "supportEmail": "nakshatra.sharma3012@gmail.com"
+      }
+    }
+  }
+}

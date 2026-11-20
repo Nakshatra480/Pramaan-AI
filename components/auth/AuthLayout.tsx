@@ -1,6 +1,7 @@
 import { BookOpen, FileText, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { BackendPrewarm } from "@/components/ui/ServerWakeHint";
 import { PramaanMark } from "@/components/brand/PramaanMark";
 
 const features = [
@@ -13,6 +14,7 @@ const features = [
 export function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-dvh lg:h-dvh lg:overflow-hidden bg-[#F5F0E4] p-0 sm:p-5 lg:p-6 grid place-items-center">
+      <BackendPrewarm />
       <div className="w-full max-w-[1280px] min-h-dvh sm:min-h-0 lg:h-full lg:max-h-[860px] grid lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] overflow-hidden sm:rounded-[18px] bg-[#FBF8F1] shadow-[0_30px_80px_-30px_rgba(60,50,30,0.25),0_0_0_1px_rgba(60,50,30,0.04)]">
         <aside className="relative hidden lg:flex flex-col overflow-hidden bg-gradient-to-b from-[#F7F0E3] via-[#F4EADA] to-[#EFE3CF] px-12 py-8">
           <div

@@ -6,6 +6,8 @@ import { PramaanResearchAnimation } from "@/components/animations/PramaanResearc
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ServerWakeHint } from "@/components/ui/ServerWakeHint";
+import { prewarmBackend } from "@/lib/api/warmup";
 
 /**
  * Gate for application routes. Uses `useAuth()` only, so it works unchanged
@@ -16,6 +18,9 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, status, error, retry } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+
+  // Opening the app directly (already signed in): wake the API alongside Firebase's session restore.
+  useEffect(() => void prewarmBackend(), []);
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace(`/auth/login?next=${encodeURIComponent(pathname)}`);
@@ -48,6 +53,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
         <div className="flex flex-col items-center gap-4">
           <PramaanResearchAnimation autoplay size={120} label="Opening your workspace" />
           <p className="text-[13px] text-ink-muted">Opening your workspace…</p>
+          <ServerWakeHint active className="max-w-xs text-center text-[12.5px] leading-snug text-ink-muted" />
         </div>
       </div>
     );

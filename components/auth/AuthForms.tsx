@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PramaanResearchAnimation } from "@/components/animations/PramaanResearchAnimation";
 import { VerificationMark } from "@/components/animations/VerificationMark";
+import { ServerWakeHint } from "@/components/ui/ServerWakeHint";
 import { safeNext } from "@/lib/utils/redirect";
 import { type FieldErrors, hasErrors, validateSignIn, validateSignUp } from "@/lib/utils/validation";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -196,6 +197,7 @@ export function LoginForm() {
           {(p) => <PasswordInput {...p} required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" />}
         </Field>
         <FormError message={error} />
+        <ServerWakeHint active={loading !== null} />
         <div className="pt-1.5">
           <Button type="submit" size="lg" className={primaryButton} trailing={<ArrowRight className="size-4" />} loading={loading === "email"} disabled={loading !== null}>
             Sign in
@@ -292,6 +294,7 @@ export function SignupForm() {
           )}
         </Field>
         <FormError message={error} />
+        <ServerWakeHint active={loading !== null} />
         <Button type="submit" size="lg" className={primaryButton} trailing={<ArrowRight className="size-4" />} loading={loading === "email"} disabled={loading !== null}>
           Create account
         </Button>

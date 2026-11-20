@@ -1,0 +1,15 @@
+# Vercel deploys only the Next.js frontend. Keep the backend, its env files and local tooling out of uploads.
+backend/
+deploy/
+docs/
+tests/
+.env*
+!.env.example
+.claude/
+.kilo/
+.agents/
+docker-compose.yml
+render.yaml
+firebase.json
+.firebaserc
+tsconfig.tsbuildinfo

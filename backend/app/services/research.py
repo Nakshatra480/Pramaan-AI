@@ -132,21 +132,20 @@ class ResearchService:
         )
 
     async def assemble(self, r: ResearchSession) -> ResearchOut:
-        steps = await self.repo.steps(r.id)
-        a = await self.repo.artifacts(r.id)
-        by_id = {s.id: s for s in a["sources"]}
-        ordered = [by_id[i] for i in source_order(a)]
-        ev_source = {e.id: e.source_id for e in a["evidence"]}
-        claim_ev: dict[uuid.UUID, list[uuid.UUID]] = {}
+        a = await self.repo.detail(r.id)  # one round trip for everything below
+        steps = a["steps"]
+        by_id = {str(s.id): s for s in a["sources"]}
+        ordered = [by_id[str(i)] for i in source_order(a)]
+        ev_source = {str(e.id): e.source_id for e in a["evidence"]}
+        claim_ev: dict[str, list[str]] = {}
         for cid, eid in a["links"]:
-            claim_ev.setdefault(cid, []).append(eid)
+            claim_ev.setdefault(str(cid), []).append(str(eid))
         report = None
         if r.report:
             report = ReportOut.model_validate({**r.report, "citations": [CitationOut(index=c.index, source_id=c.source_id) for c in a["citations"]]})
         done = sum(1 for s in steps if s.status in (StepStatus.complete, StepStatus.skipped))
-        messages = await self.repo.messages(r.id)
         return ResearchOut(
-            **self._summary(r, await self.repo.share_token(r.id)).model_dump(by_alias=False),
+            **self._summary(r, a["share_token"]).model_dump(by_alias=False),
             steps=[StepOut(id=s.key, label=STEP_BY_KEY[s.key].label, status=s.status, detail=s.detail) for s in steps],
             sources=[SourceOut.model_validate(s) for s in ordered],
             source_ids=[s.id for s in ordered],
@@ -157,13 +156,13 @@ class ResearchService:
                     text=c.text,
                     status=c.status,
                     confidence=c.confidence,
-                    evidence_ids=claim_ev.get(c.id, []),
-                    source_ids=list(dict.fromkeys(ev_source[e] for e in claim_ev.get(c.id, []) if e in ev_source)),
+                    evidence_ids=[uuid.UUID(e) for e in claim_ev.get(str(c.id), [])],
+                    source_ids=list(dict.fromkeys(ev_source[e] for e in claim_ev.get(str(c.id), []) if e in ev_source)),
                 )
                 for c in a["claims"]
             ],
             report=report,
-            follow_ups=[follow_up_out(m) for m in messages],
+            follow_ups=[follow_up_out(m) for m in a["messages"]],
             progress=1.0 if r.status == ResearchStatus.completed else round(done / max(1, len(steps)), 3),
         )
 
@@ -245,10 +244,10 @@ def follow_up_out(m: Message) -> FollowUpOut:
 
 def source_order(a: dict[str, Any]) -> list[uuid.UUID]:
     """Source ids in the order the report's side panel numbers them (cited first, then by relevance)."""
-    cited = [c.source_id for c in a["citations"]]
-    rest = [s.id for s in sorted((s for s in a["sources"] if s.id not in cited), key=lambda s: -s.relevance)]
-    known = {s.id for s in a["sources"]}
-    return [i for i in cited if i in known] + rest
+    cited = list(dict.fromkeys(str(c.source_id) for c in a["citations"]))
+    rest = [s.id for s in sorted((s for s in a["sources"] if str(s.id) not in cited), key=lambda s: -s.relevance)]
+    known = {str(s.id): s.id for s in a["sources"]}
+    return [known[i] for i in cited if i in known] + rest
 
 
 async def _handle_follow_up(research_id: uuid.UUID, message_id: uuid.UUID, user_id: uuid.UUID) -> None:

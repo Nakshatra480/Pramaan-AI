@@ -152,6 +152,16 @@ export const researchService = {
     return db.read().research.find((r) => r.id === id) ?? null;
   },
 
+  /** Synchronous read of a research the store already has (the API adapter serves its session cache). */
+  peek(id: string): Research | undefined {
+    return db.read().research.find((r) => r.id === id);
+  },
+
+  /** No-op in demo mode: everything is already local. */
+  prefetch(id: string): void {
+    void id;
+  },
+
   async getByShareId(shareId: string): Promise<Research | null> {
     await latency(260);
     return db.read().research.find((r) => r.shareId === shareId && r.visibility === "link") ?? null;

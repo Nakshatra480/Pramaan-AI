@@ -1,5 +1,6 @@
 import { forwardRef, type AnchorHTMLAttributes } from "react";
 import { Link as RouterLink } from "react-router";
+import { prefetchRoute } from "@/lib/prefetch";
 
 export interface LinkProps extends Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> {
   href: string;
@@ -17,5 +18,26 @@ export const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link({ hre
   if (EXTERNAL.test(href) || href.startsWith("#") || props.target === "_blank" || props.download !== undefined) {
     return <a ref={ref} href={href} {...props} />;
   }
-  return <RouterLink ref={ref} to={href} replace={replace} {...props} />;
+  const { onPointerEnter, onFocus, onTouchStart } = props;
+  return (
+    <RouterLink
+      ref={ref}
+      to={href}
+      replace={replace}
+      {...props}
+      // Load the destination's data on intent, so it's usually there by the time the click lands.
+      onPointerEnter={(e) => {
+        prefetchRoute(href);
+        onPointerEnter?.(e);
+      }}
+      onFocus={(e) => {
+        prefetchRoute(href);
+        onFocus?.(e);
+      }}
+      onTouchStart={(e) => {
+        prefetchRoute(href);
+        onTouchStart?.(e);
+      }}
+    />
+  );
 });

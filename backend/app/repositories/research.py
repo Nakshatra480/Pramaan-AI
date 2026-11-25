@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -160,6 +162,22 @@ class ResearchRepository:
         cites = (await self.db.scalars(select(Citation).where(Citation.research_id == research_id).order_by(Citation.index))).all()
         return {"sources": sources, "evidence": evidence, "claims": claims, "links": links, "citations": cites}
 
+    async def detail(self, research_id: uuid.UUID) -> dict[str, Any]:
+        """Everything a report page shows besides the session row — steps, sources, evidence, claims and their
+        evidence links, citations, follow-up messages and the share token — in ONE round trip. The API host and
+        the database sit in different regions, so eight sequential queries cost far more than one JSON query.
+        Rows come back as attribute objects shaped like the ORM rows they replace."""
+        row = (await self.db.execute(_DETAIL_SQL, {"id": research_id})).one()
+        out: dict[str, Any] = {}
+        for key in ("steps", "sources", "evidence", "claims", "citations", "messages"):
+            value = getattr(row, key)
+            items = json.loads(value) if isinstance(value, str) else value or []
+            out[key] = [SimpleNamespace(**item) for item in items]
+        links = row.links if not isinstance(row.links, str) else json.loads(row.links)
+        out["links"] = [(c, e) for c, e in (links or [])]
+        out["share_token"] = row.share_token
+        return out
+
     # ------------------------------------------------------------ follow-ups
 
     async def conversation(self, session: ResearchSession, create: bool = False) -> Conversation | None:
@@ -179,3 +197,33 @@ class ResearchRepository:
                 .order_by(Message.created_at)
             )
         ).all()
+
+
+_DETAIL_SQL = text(
+    """
+    SELECT
+      (SELECT coalesce(json_agg(json_build_object('key', key, 'status', status, 'detail', detail) ORDER BY position), '[]')
+         FROM research_steps WHERE research_id = :id) AS steps,
+      (SELECT coalesce(json_agg(json_build_object(
+                'id', id, 'title', title, 'domain', domain, 'url', url, 'publisher', publisher, 'authors', authors,
+                'published_at', published_at, 'type', type, 'relevance', relevance, 'doi', doi, 'abstract', abstract)), '[]')
+         FROM sources WHERE research_id = :id) AS sources,
+      (SELECT coalesce(json_agg(json_build_object(
+                'id', id, 'source_id', source_id, 'passage', passage, 'relevance', relevance, 'location', location)
+              ORDER BY relevance DESC), '[]')
+         FROM evidence WHERE research_id = :id) AS evidence,
+      (SELECT coalesce(json_agg(json_build_object('id', id, 'text', text, 'status', status, 'confidence', confidence)
+              ORDER BY position), '[]')
+         FROM claims WHERE research_id = :id) AS claims,
+      (SELECT coalesce(json_agg(json_build_array(ce.claim_id, ce.evidence_id)), '[]')
+         FROM claim_evidence ce JOIN claims c ON c.id = ce.claim_id WHERE c.research_id = :id) AS links,
+      (SELECT coalesce(json_agg(json_build_object('index', index, 'source_id', source_id) ORDER BY index), '[]')
+         FROM citations WHERE research_id = :id) AS citations,
+      (SELECT coalesce(json_agg(json_build_object(
+                'id', m.id, 'question', m.question, 'answer', m.answer, 'status', m.status, 'kind', m.kind,
+                'revision_id', m.revision_id, 'sources', m.sources, 'created_at', m.created_at)
+              ORDER BY m.created_at), '[]')
+         FROM messages m JOIN conversations cv ON cv.id = m.conversation_id WHERE cv.research_id = :id) AS messages,
+      (SELECT token FROM shares WHERE research_id = :id AND revoked_at IS NULL) AS share_token
+    """
+)

@@ -71,15 +71,61 @@ const ESTIMATE_S: Record<Research["mode"], number> = { quick: 60, standard: 120,
 /** Open progress streams. While one is open it drives updates, so list polling pauses. */
 let activeStreams = 0;
 
-async function get(id: string): Promise<Research | null> {
+/**
+ * Reports already loaded this session, so revisiting one renders instantly while `get` refreshes it in the
+ * background (stale-while-revalidate). Memory only — never persisted — and cleared on sign-out.
+ */
+const details = new Map<string, Research>();
+const DETAIL_CACHE_MAX = 40;
+/** Prefetches started on link hover/focus; the page's own `get` adopts one instead of asking again. */
+const prefetching = new Map<string, Promise<Research | null>>();
+
+function remember(id: string, r: Research | null) {
+  details.delete(id);
+  if (!r) return;
+  details.set(id, r);
+  if (details.size > DETAIL_CACHE_MAX) details.delete(details.keys().next().value as string);
+}
+
+export function clearResearchCache() {
+  details.clear();
+  prefetching.clear();
+}
+
+async function fetchDetail(id: string): Promise<Research | null> {
   try {
     const r = fromDetail(await apiFetch<ResearchDTO>(`/research/${id}`));
-    if (r.followUps.some((f) => f.status === "running")) scheduleRefresh(2000);
+    remember(id, r);
     return r;
   } catch (e) {
-    if (e instanceof ApiError && (e.status === 404 || e.status === 422)) return null;
+    if (e instanceof ApiError && (e.status === 404 || e.status === 422)) {
+      remember(id, null);
+      return null;
+    }
     throw e;
   }
+}
+
+async function get(id: string): Promise<Research | null> {
+  const pending = prefetching.get(id);
+  prefetching.delete(id);
+  const r = await (pending ?? fetchDetail(id));
+  if (r?.followUps.some((f) => f.status === "running")) scheduleRefresh(2000);
+  return r;
+}
+
+/** A report loaded earlier this session, if any — shown at once while it's refetched. */
+function peek(id: string): Research | undefined {
+  return details.get(id);
+}
+
+/** Starts loading a report before it's opened (link hover / focus / touch). */
+function prefetch(id: string): void {
+  if (details.has(id) || prefetching.has(id)) return;
+  const p = fetchDetail(id).catch(() => null);
+  prefetching.set(id, p);
+  // A prefetch nobody opens shouldn't be adopted much later (it may be stale by then).
+  setTimeout(() => prefetching.get(id) === p && prefetching.delete(id), 15_000);
 }
 
 export const apiResearchService = {
@@ -91,6 +137,8 @@ export const apiResearchService = {
   },
 
   get,
+  peek,
+  prefetch,
 
   async getByShareId(token: string): Promise<Research | null> {
     try {
@@ -181,10 +229,12 @@ export const apiResearchService = {
   },
   async remove(id: string) {
     await apiFetch(`/research/${id}`, { method: "DELETE" });
+    remember(id, null);
     apiEvents.notify();
   },
   async removeAll() {
     await apiFetch("/research", { method: "DELETE", query: { confirm: "delete-all" } });
+    clearResearchCache();
     apiEvents.notify();
   },
   /** Returns the follow-up's id. The UI shows it at once (optimistically); `get` keeps polling until it completes. */

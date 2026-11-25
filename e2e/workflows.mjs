@@ -227,6 +227,49 @@ await test("M-15 Research again asks before starting a new job", async () => {
   await ctx.close();
 });
 
+await test("Reports open instantly: revisits render from cache, hovering a link prefetches it", async () => {
+  const start = async (q) => (await api(alice.token, "/research", { method: "POST", body: JSON.stringify({ query: q, mode: "quick", sources: ["library"] }) })).body.researchId;
+  const a = await start(`Zephyr-9 efficiency ${run}?`);
+  const b = await start(`Zephyr-9 lead engineer ${run}?`);
+  for (const id of [a, b]) {
+    for (let i = 0; i < 90 && !["completed", "failed"].includes((await api(alice.token, `/research/${id}`)).body.status); i++) await new Promise((res) => setTimeout(res, 2000));
+  }
+  const { page, ctx } = await session(alice);
+  const detailCalls = { [a]: 0, [b]: 0 };
+  // Make the API slow (as it is cross-region in production) so a cache hit is unmistakable.
+  await page.route(new RegExp(`/api/v1/research/(${a}|${b})$`), async (route) => {
+    const id = route.request().url().split("/").pop();
+    if (route.request().method() === "GET") detailCalls[id] += 1;
+    await new Promise((res) => setTimeout(res, 2500));
+    await route.continue();
+  });
+  const report = page.getByRole("button", { name: /Research again/ }).first();
+  await page.goto(`${BASE}/research/${a}`);
+  await report.waitFor({ timeout: 30000 });
+
+  // Leave (client-side) and come back: the report shows at once, before the 2.5 s refetch returns.
+  await page.getByRole("link", { name: "Library", exact: true }).first().click();
+  await page.waitForURL(/\/library/);
+  await page.goBack();
+  const t0 = Date.now();
+  await report.waitFor({ timeout: 1500 });
+  const revisitMs = Date.now() - t0;
+
+  // Hover a report's link, then open it: one request, already under way before the click.
+  const link = page.locator(`a[href="/research/${b}"]`).first();
+  await link.hover();
+  await page.waitForTimeout(1500);
+  expect(detailCalls[b] === 1, `hover started the fetch (${detailCalls[b]})`);
+  const t1 = Date.now();
+  await link.click();
+  await report.waitFor({ timeout: 10000 });
+  const openMs = Date.now() - t1;
+  await page.waitForTimeout(500);
+  expect(detailCalls[b] === 1, `opening adopted the prefetch instead of refetching (${detailCalls[b]})`);
+  await ctx.close();
+  return `revisit ${revisitMs} ms, prefetched open ${openMs} ms (API delayed 2500 ms)`;
+});
+
 if (REAL) {
   await test("Real research over an uploaded document cites it (H-01/H-02/H-03/M-05)", async () => {
     expect(docId, "uploaded document from the L-06 step");

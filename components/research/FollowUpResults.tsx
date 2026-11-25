@@ -121,7 +121,11 @@ const POLL_MS = 4000;
  */
 export function RevisionCard({ revisionId, instructions, since }: { revisionId: string; instructions: string; since: string }) {
   const toast = useToast();
-  const { data: revision, loading, refresh } = useResource(() => services.research.get(revisionId), [revisionId]);
+  const { data: revision, loading, refresh } = useResource(
+    () => services.research.get(revisionId),
+    [revisionId],
+    () => services.research.peek(revisionId),
+  );
   const refreshRef = useRef(refresh);
   useLayoutEffect(() => {
     refreshRef.current = refresh;

@@ -11,6 +11,7 @@ import type { User } from "@/types";
 import type { AccountUsage, AccountExport } from "@/lib/mock/account";
 import { ApiError, apiDownload, apiFetch, setUnauthenticatedHandler } from "./client";
 import { API_URL } from "./config";
+import { clearResearchCache } from "./research";
 import type { MeDTO } from "./types";
 
 type Listener = (user: User | null, error?: string) => void;
@@ -58,6 +59,7 @@ function emit(user: User | null, error?: string) {
 async function loadProfile(fb: FirebaseUser | null) {
   if (!fb) {
     remotePreferences = null;
+    clearResearchCache(); // never show one account's reports to the next
     return emit(null);
   }
   try {

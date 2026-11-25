@@ -32,7 +32,11 @@ const RESOLVE_POLL_MS = 2500;
  * strand the page on the loading screen.
  */
 export function ResearchView({ researchId, initialSourceId }: { researchId: string; initialSourceId?: string | null }) {
-  const { data: research, loading, refresh } = useResource(() => services.research.get(researchId), [researchId]);
+  const { data: research, loading, refresh } = useResource(
+    () => services.research.get(researchId),
+    [researchId],
+    () => services.research.peek(researchId),
+  );
   const { data: project } = useResource(async () => (research?.projectId ? services.projects.get(research.projectId) : null), [research?.projectId]);
   const [event, setEvent] = useState<ResearchProgressEvent | null>(null);
   const [phase, setPhase] = useState<ResearchPhase | null>(null);

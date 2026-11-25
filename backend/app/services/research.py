@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 import secrets
 import uuid
 from datetime import UTC, datetime
@@ -15,15 +14,15 @@ from app.db.models import ActivityKind, Message, ProjectMember, ProjectRole, Res
 from app.repositories.projects import ActivityRepository
 from app.repositories.research import ResearchRepository
 from app.research.citations import CitationMapper
-from app.research.llm import ResearchLLM
-from app.research.state import EvidenceItem
+from app.research.follow_ups import build_evidence, parse_intent, revision_title, search_fresh
 from app.research.status import STEP_BY_KEY, TERMINAL
-from app.research.text import overlap, terms, title_case_query
+from app.research.text import title_case_query
 from app.schemas.research import (
     CitationOut,
     ClaimOut,
     EvidenceOut,
     FollowUpOut,
+    FollowUpSource,
     Metrics,
     ReportOut,
     ResearchCreate,
@@ -37,7 +36,6 @@ from app.schemas.research import (
 )
 from app.services.access import require_project, require_research
 from app.services.jobs import JobRunner, get_job_runner
-from app.services.llm.factory import get_llm
 
 logger = logging.getLogger("pramaan.research")
 
@@ -129,6 +127,8 @@ class ResearchService:
             share_id=share_id,
             metrics=Metrics.model_validate(r.metrics or {}),
             error_code=r.error_code,
+            parent_id=r.parent_id,
+            revision_instructions=r.revision_instructions,
         )
 
     async def assemble(self, r: ResearchSession) -> ResearchOut:
@@ -163,16 +163,7 @@ class ResearchService:
                 for c in a["claims"]
             ],
             report=report,
-            follow_ups=[
-                FollowUpOut(
-                    id=m.id,
-                    question=m.question,
-                    created_at=m.created_at,
-                    status="complete" if m.status == "complete" else "failed" if m.status == "failed" else "running",
-                    answer=m.answer,
-                )
-                for m in messages
-            ],
+            follow_ups=[follow_up_out(m) for m in messages],
             progress=1.0 if r.status == ResearchStatus.completed else round(done / max(1, len(steps)), 3),
         )
 
@@ -219,60 +210,71 @@ class ResearchService:
     # ------------------------------------------------------------ follow-ups
 
     async def follow_up(self, user: User, research_id: uuid.UUID, question: str) -> FollowUpOut:
+        """Records the follow-up and routes it in the background: a request to change the report becomes a new
+        research session (the original is never edited); a question is answered with fresh search."""
         session = await require_research(self.db, research_id, user, write=True)
         if session.status != ResearchStatus.completed:
             raise ValidationFailed("Follow-ups are available once research completes.", code="RESEARCH_NOT_COMPLETE")
         conv = await self.repo.conversation(session, create=True)
         assert conv is not None
-        msg = Message(conversation_id=conv.id, question=question.strip(), answer=[], status="running")
+        msg = Message(conversation_id=conv.id, question=question.strip(), answer=[], status="running", kind="answer", sources=[])
         self.db.add(msg)
         await self.db.flush()
-        out = FollowUpOut(id=msg.id, question=msg.question, created_at=msg.created_at, status="running", answer=[])
+        out = follow_up_out(msg)
         await self.db.commit()
-        self.jobs.submit(f"follow_up:{msg.id}", lambda: _answer_follow_up(session.id, msg.id))
+        self.jobs.submit(f"follow_up:{msg.id}", lambda: _handle_follow_up(session.id, msg.id, user.id))
         return out
 
 
-FOLLOW_UP_EVIDENCE = 24
 FOLLOW_UP_FAILED = "Pramaan couldn't answer this follow-up because the research engine is busy or unavailable. Please ask again in a moment."
+NO_ANSWER = "Neither this research nor a fresh search found evidence that answers that. Try rephrasing, or start a new research on it."
+
+
+def follow_up_out(m: Message) -> FollowUpOut:
+    return FollowUpOut(
+        id=m.id,
+        question=m.question,
+        created_at=m.created_at,
+        status="complete" if m.status == "complete" else "failed" if m.status == "failed" else "running",
+        answer=m.answer or [],
+        kind="revision" if m.kind == "revision" else "answer",
+        revision_id=m.revision_id,
+        sources=[FollowUpSource.model_validate(x) for x in (m.sources or []) if isinstance(x, dict)],
+    )
 
 
 def source_order(a: dict[str, Any]) -> list[uuid.UUID]:
-    """Source ids in the order the report's side panel numbers them (cited first, then by relevance).
-    Citation [n] always means the n-th source here — the same rule `assemble` uses."""
+    """Source ids in the order the report's side panel numbers them (cited first, then by relevance)."""
     cited = [c.source_id for c in a["citations"]]
     rest = [s.id for s in sorted((s for s in a["sources"] if s.id not in cited), key=lambda s: -s.relevance)]
     known = {s.id for s in a["sources"]}
     return [i for i in cited if i in known] + rest
 
 
-async def _answer_follow_up(research_id: uuid.UUID, message_id: uuid.UUID) -> None:
-    """Answers a follow-up from this session's evidence, most relevant passages first, with the thread so far
-    as context. Citations use the report's own source numbers. Never leaves the message running."""
+async def _handle_follow_up(research_id: uuid.UUID, message_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    """Classifies the follow-up and runs the matching workflow. Never leaves the message running."""
     from app.db.database import get_sessionmaker
+    from app.research import runner
 
     async with get_sessionmaker()() as db:
         msg = await db.get(Message, message_id)
-        if msg is None:
+        parent = await db.get(ResearchSession, research_id)
+        if msg is None or parent is None:
             return
         try:
             repo = ResearchRepository(db)
-            a = await repo.artifacts(research_id)
+            deps = runner.default_deps(research_id)  # same providers as research runs (tests inject fakes here)
             history = [(m.question, " ".join(m.answer)) for m in await repo.messages(research_id) if m.id != msg.id and m.status == "complete"]
-            q = terms(msg.question + " " + " ".join(h[0] for h in history[-1:]))
-            ranked = sorted(a["evidence"], key=lambda e: (overlap(q, terms(e.passage)), e.relevance), reverse=True)[:FOLLOW_UP_EVIDENCE]
-            items = [EvidenceItem(id=f"E{i + 1}", source_key=str(e.source_id), passage=e.passage, relevance=e.relevance) for i, e in enumerate(ranked)]
-            paragraphs = await ResearchLLM(get_llm()).follow_up(msg.question, items, history)
-            mapper = CitationMapper([], items)
-            rendered = [mapper.render(p, kind="evidence") for p in paragraphs]
-            # Re-number from the mapper's local [1..n] to the side panel's numbering.
-            panel = {sid: i for i, sid in enumerate(source_order(a), start=1)}
-            local = {n: panel.get(uuid.UUID(k)) for n, k in enumerate(mapper.order, start=1)}
-            final = [re.sub(r"\[(\d+)\]", lambda m: f"[{local[int(m.group(1))]}]" if local.get(int(m.group(1))) else "", p) for p in rendered]
-            msg.answer = [p for p in final if p.strip()] or [
-                "This research doesn't contain evidence that answers that. Try starting a new research session for it."
-            ]
-            msg.status = "complete"
+            summary = list((parent.report or {}).get("summary") or [])
+            topic = parent.title or parent.query
+            raw = await deps.llm.classify_follow_up(msg.question, topic, summary, history)
+            intent = parse_intent(raw, msg.question, topic)
+            log_fields = {"research_id": str(research_id), "intent": intent.kind, "classified_by": "model" if raw is not None else "heuristic"}
+            logger.info("follow_up_routed", extra={"fields": log_fields})
+            if intent.kind == "revise":
+                await _start_revision(db, parent, msg, user_id, intent.instructions)
+            else:
+                await _answer_with_search(db, repo, deps, parent, msg, intent.search_query, history, summary)
         except Exception:
             logger.exception("follow_up_failed", extra={"fields": {"research_id": str(research_id)}})
             await db.rollback()
@@ -281,3 +283,52 @@ async def _answer_follow_up(research_id: uuid.UUID, message_id: uuid.UUID) -> No
                 return
             msg.answer, msg.status = [FOLLOW_UP_FAILED], "failed"
         await db.commit()
+    if msg is not None and msg.revision_id:
+        get_job_runner().wake()  # the revision is queued like any research job
+
+
+async def _start_revision(db: AsyncSession, parent: ResearchSession, msg: Message, user_id: uuid.UUID, instructions: str) -> None:
+    """Regenerates the report with the requested changes as a new research session linked to the original."""
+    child = await ResearchRepository(db).create(
+        ResearchSession(
+            user_id=user_id,
+            project_id=parent.project_id,
+            query=parent.query,
+            title=revision_title(parent.title),
+            mode=parent.mode,
+            channels=list(parent.channels),
+            metrics={},
+            parent_id=parent.id,
+            revision_instructions=instructions,
+        )
+    )
+    msg.kind = "revision"
+    msg.revision_id = child.id
+    msg.answer = [f"Regenerating the report with your changes: {instructions}"]
+    msg.status = "complete"  # the thread entry is done; the revision runs (and can be retried) as its own research job
+
+
+async def _answer_with_search(
+    db: AsyncSession,
+    repo: ResearchRepository,
+    deps: Any,
+    parent: ResearchSession,
+    msg: Message,
+    search_query: str,
+    history: list[tuple[str, str]],
+    summary: list[str],
+) -> None:
+    """Answers from the report's evidence plus a fresh Tavily (web) and OpenAlex (scholarly) search for the question.
+    Citations [n] number this answer's own source list: report sources keep a link to the side panel."""
+    a = await repo.artifacts(parent.id)
+    fresh, errors = await search_fresh(deps.web, deps.academic, search_query)
+    report_sources = {str(s.id): s for s in a["sources"]}
+    items, candidates = build_evidence(msg.question, list(a["evidence"]), report_sources, fresh)
+    paragraphs = await deps.llm.follow_up(msg.question, items, history, context=" ".join(summary) or None)
+    mapper = CitationMapper([], items)
+    rendered = [p for p in (mapper.render(p, kind="evidence") for p in paragraphs) if p.strip()]
+    msg.answer = rendered or [NO_ANSWER]
+    msg.sources = [candidates[k].out() for k in mapper.order if k in candidates] if rendered else []
+    msg.status = "complete"
+    if errors:
+        logger.info("follow_up_search_degraded", extra={"fields": {"research_id": str(parent.id), "errors": errors}})

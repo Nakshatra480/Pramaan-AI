@@ -341,6 +341,10 @@ class ResearchSession(JobLease, Base):
     error_message: Mapped[str | None] = mapped_column(Text)
     metrics: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     report: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # A revision regenerates an earlier report with the user's changes (asked as a follow-up). The original
+    # is never modified; the revision is a separate session that points back to it.
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("research_sessions.id", ondelete="SET NULL"), index=True)
+    revision_instructions: Mapped[str | None] = mapped_column(Text)
     saved: Mapped[bool] = mapped_column(Boolean, default=False)
     visibility: Mapped[Visibility] = mapped_column(_enum(Visibility, "visibility"), default=Visibility.private)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -464,4 +468,10 @@ class Message(Base):
     question: Mapped[str] = mapped_column(Text)
     answer: Mapped[list[str]] = mapped_column(JSONB, default=list)
     status: Mapped[str] = mapped_column(String(16), default="running")
+    # "answer": a question answered from the report plus fresh web/academic search.
+    # "revision": a request to change the report — answered by a new research session (revision_id).
+    kind: Mapped[str] = mapped_column(String(16), default="answer", server_default="answer")
+    revision_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("research_sessions.id", ondelete="SET NULL"), index=True)
+    # Sources cited by this answer, numbered [1..n] in the answer text (report sources and new search results).
+    sources: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, server_default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

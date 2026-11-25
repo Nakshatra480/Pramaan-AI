@@ -7,7 +7,9 @@ import type {
   ResearchStep,
   ResearchStepId,
 } from "@/types";
+import { followUpKind, revisionLength } from "@/lib/utils/follow-up-intent";
 import { db, latency, uid } from "./db";
+import { sourceService } from "./sources";
 
 /**
  * Mock research engine. Simulates the LangGraph workflow (PRD §14) by deriving
@@ -310,6 +312,8 @@ export const researchService = {
 };
 
 const templates = new Map<string, string>();
+/** Demo revisions: research id → the requested changes (applied to the cloned report on completion). */
+const revisions = new Map<string, string>();
 
 function complete(id: string) {
   db.write((d) => {
@@ -322,6 +326,13 @@ function complete(id: string) {
     r.status = "complete";
     r.completedAt = new Date().toISOString();
     r.report = template?.report ? structuredClone(template.report) : undefined;
+    const change = revisions.get(r.id);
+    if (r.report && change) {
+      // Demo stand-in for regeneration: honour the requested length.
+      const length = revisionLength(change);
+      if (length === "concise") Object.assign(r.report, { summary: r.report.summary.slice(0, 1), findings: r.report.findings.slice(0, 3), analysis: r.report.analysis.slice(0, 1) });
+      r.report.limitations = [...r.report.limitations, `Demo mode: this revision reuses the original evidence. Requested changes — “${change}”.`];
+    }
     d.activity.unshift({
       id: uid("a"),
       projectId: r.projectId,
@@ -335,22 +346,42 @@ function complete(id: string) {
   });
 }
 
-/** Demo mode: completes a follow-up after a realistic delay. */
+/**
+ * Demo mode: routes a follow-up like the backend does. A change request regenerates the report as a new
+ * research (the original is untouched); a question is answered from the report's sources (demo mode has
+ * no live search).
+ */
 async function finishFollowUp(id: string, fid: string) {
-  await latency(4200);
+  await latency(1600);
+  const parent = db.read().research.find((x) => x.id === id);
+  const f = parent?.followUps.find((x) => x.id === fid);
+  if (!parent || !f) return;
+  if (followUpKind(f.question) === "revise") {
+    const child = await researchService.create({ query: parent.query, mode: parent.mode, channels: parent.channels, projectId: parent.projectId });
+    templates.set(child.id, templates.get(id) ?? id);
+    revisions.set(child.id, f.question);
+    db.write((d) => {
+      const c = d.research.find((x) => x.id === child.id);
+      if (c) Object.assign(c, { title: `${parent.title.replace(/ \(revised\)$/, "")} (revised)`, parentId: id, revisionInstructions: f.question, preview: parent.preview });
+      const x = d.research.find((r) => r.id === id)?.followUps.find((y) => y.id === fid);
+      if (x) Object.assign(x, { status: "complete", kind: "revision", revisionId: child.id, answer: [`Regenerating the report with your changes: ${f.question}`] });
+    });
+    return;
+  }
+  await latency(2600);
   db.write((d) => {
     const r = d.research.find((x) => x.id === id);
-    const f = r?.followUps.find((x) => x.id === fid);
-    if (!r || !f) return;
-    f.status = "complete";
-    const cites = r.report?.citations ?? [];
-    const c1 = cites[0] ? `[${cites[0].index}]` : "";
-    const c2 = cites[1] ? `[${cites[1].index}]` : "";
-    f.answer = [
+    const fu = r?.followUps.find((x) => x.id === fid);
+    if (!r || !fu) return;
+    const cited = (r.report?.citations ?? []).slice(0, 2).map((c) => sourceService.getSync(c.sourceId)).filter((s): s is NonNullable<typeof s> => Boolean(s));
+    fu.status = "complete";
+    fu.kind = "answer";
+    fu.sources = cited.map((s) => ({ title: s.title, url: s.url, domain: s.domain, publisher: s.publisher, type: s.type, publishedAt: s.publishedAt ?? null, authors: s.authors ?? [], origin: "report" as const, sourceId: s.id }));
+    const c1 = cited[0] ? "[1]" : "";
+    const c2 = cited[1] ? "[2]" : "";
+    fu.answer = [
       `Building on the evidence already collected for this research, Pramaan re-ranked ${Math.min(r.evidence.length, 9)} passages against your follow-up. The most relevant evidence is consistent with the original findings ${c1}${c2}.`,
-      r.claims.some((c) => c.status === "insufficient_evidence")
-        ? "Some parts of this question depend on claims marked as having insufficient evidence, so Pramaan has not presented them as established facts. Try Deep Research to broaden the search."
-        : "No new contradictions were found. Deep Research can broaden discovery if you need additional sources.",
+      "In the live app, Pramaan also searches the web and scholarly literature for each follow-up question and cites what it finds.",
     ];
   });
 }

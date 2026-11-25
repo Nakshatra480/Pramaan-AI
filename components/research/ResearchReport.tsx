@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { FolderClosed, Info } from "lucide-react";
 import { Link } from "@/components/ui/Link";
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { ClaimStatusBadge, CLAIM_STATUS } from "@/components/ui/StatusIndicator";
 import { ease } from "@/lib/motion";
 import { cn } from "@/lib/utils/cn";
@@ -17,25 +17,39 @@ import { SourceFavicon, SourceMetaLine } from "./SourceMeta";
 function Section({ id, title, children, index, className }: { id: string; title: string; children: ReactNode; index: number; className?: string }) {
   const { research } = useResearch();
   const reading = useNarratingSection(research.id, id);
+  const embedded = useContext(EmbeddedCtx);
+  const domId = embedded ? `rev-${research.id}-${id}` : id; // unique ids when a revision is shown inside another report
+  const Heading = embedded ? "h5" : "h2"; // embedded under a follow-up (h3) and the revision's title (h4)
   return (
     <motion.section
-      id={id}
-      aria-labelledby={`${id}-h`}
+      id={domId}
+      aria-labelledby={`${domId}-h`}
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, delay: 0.15 + index * 0.12, ease: ease.out }}
       className={cn("scroll-mt-24", className)}
     >
-      <h2 id={`${id}-h`} className="font-display text-[28px] sm:text-[30px] text-ink mb-5">
+      <Heading id={`${domId}-h`} className={cn("font-display text-ink mb-5", embedded ? "text-[23px] sm:text-[25px]" : "text-[28px] sm:text-[30px]")}>
         {title}
         {reading && <ReadingIndicator paused={reading === "paused"} />}
-      </h2>
+      </Heading>
       {children}
     </motion.section>
   );
 }
 
-export function ResearchReport({ project, actions }: { project?: Project | null; actions?: ReactNode }) {
+/** True inside a revision shown under a follow-up: smaller headings, unique ids, visible source list. */
+const EmbeddedCtx = createContext(false);
+
+export function ResearchReport({ project, actions, embedded = false }: { project?: Project | null; actions?: ReactNode; embedded?: boolean }) {
+  return (
+    <EmbeddedCtx.Provider value={embedded}>
+      <ReportBody project={project} actions={actions} embedded={embedded} />
+    </EmbeddedCtx.Provider>
+  );
+}
+
+function ReportBody({ project, actions, embedded }: { project?: Project | null; actions?: ReactNode; embedded: boolean }) {
   const { research, sources, openSource } = useResearch();
   const report = research.report!;
   const counts = research.claims.reduce<Record<ClaimStatus, number>>(
@@ -60,7 +74,20 @@ export function ResearchReport({ project, actions }: { project?: Project | null;
           <span aria-hidden>·</span>
           <time dateTime={research.completedAt ?? research.createdAt}>{formatDate(research.completedAt ?? research.createdAt, { day: "numeric", month: "long", year: "numeric" })}</time>
         </div>
-        <h1 className="mt-4 font-display text-[36px] sm:text-[48px] leading-[1.04] text-ink text-balance">{research.title}</h1>
+        {embedded ? (
+          <h4 className="mt-3 font-display text-[28px] sm:text-[34px] leading-[1.08] text-ink text-balance">{research.title}</h4>
+        ) : (
+          <h1 className="mt-4 font-display text-[36px] sm:text-[48px] leading-[1.04] text-ink text-balance">{research.title}</h1>
+        )}
+        {!embedded && research.parentId && (
+          <p className="mt-4 rounded-xl border border-line bg-subtle/60 px-4 py-3 text-[13.5px] leading-relaxed text-ink-2">
+            <span className="font-medium text-ink">Revised version.</span>{" "}
+            <Link href={`/research/${research.parentId}`} className="underline decoration-line-strong underline-offset-2 hover:text-ink">
+              Open the original report
+            </Link>
+            {research.revisionInstructions ? <span className="text-ink-muted"> · Changes asked for: “{research.revisionInstructions}”</span> : null}
+          </p>
+        )}
         <p className="mt-4 text-[15px] text-ink-muted leading-relaxed">
           <span className="text-ink-faint">Question — </span>
           {research.query}
@@ -90,7 +117,7 @@ export function ResearchReport({ project, actions }: { project?: Project | null;
         )}
       </motion.header>
 
-      <div className="mt-12 space-y-14">
+      <div className={cn(embedded ? "mt-10 space-y-11" : "mt-12 space-y-14")}>
         <Section id="summary" title="Executive Summary" index={0}>
           <div className="prose-report">
             {report.summary.map((p, i) => (
@@ -204,7 +231,7 @@ export function ResearchReport({ project, actions }: { project?: Project | null;
 
         {/* On screen, sources live only in the side panel (or the Sources sheet on small screens);
             this list exists for printed / PDF copies so they keep their references. */}
-        <Section id="sources" title="Sources" index={5} className="hidden print:block">
+        <Section id="sources" title="Sources" index={5} className={embedded ? undefined : "hidden print:block"}>
           <ol className="space-y-1">
             {sources.map((s, i) => (
               <li key={s.id}>

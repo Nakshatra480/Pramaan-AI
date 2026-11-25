@@ -19,6 +19,9 @@ from app.services.llm.base import MalformedOutput, ModelNotInstalled, ModelTimeo
 logger = logging.getLogger("pramaan.llm")
 
 MAX_RETRY_AFTER_S = 20.0
+# A 429 that asks for a short wait (a per-minute token window) gets this many attempts in total: bursts —
+# several follow-ups and a revision in a row on a free tier — recover instead of failing the job.
+SHORT_RATE_LIMIT_RETRIES = 5
 _MODEL_MISSING = ("model_not_found", "does not exist", "decommissioned", "not found")
 _REQUEST_TOO_BIG = ("context_length", "maximum context", "too large", "too long", "json_validate_failed", "failed to generate json")
 
@@ -41,6 +44,16 @@ def error_detail(e: Exception) -> dict[str, Any]:
         if rid := e.response.headers.get("x-request-id"):
             out["provider_request_id"] = rid[:100]
     return out
+
+
+def _short_rate_limit(e: Exception) -> bool:
+    """A 429 whose Retry-After is a few seconds — worth waiting for, unlike a daily quota."""
+    if not isinstance(e, httpx.HTTPStatusError) or e.response.status_code != 429:
+        return False
+    try:
+        return 0 <= float(e.response.headers.get("retry-after", "")) <= MAX_RETRY_AFTER_S
+    except ValueError:
+        return False
 
 
 class HostedProvider:
@@ -133,7 +146,8 @@ class HostedProvider:
             except httpx.HTTPError as e:
                 err, transient = self._classify(e, what)
                 detail = error_detail(e)
-                if not transient or attempt >= self.retries:
+                limit = max(self.retries, SHORT_RATE_LIMIT_RETRIES) if _short_rate_limit(e) else self.retries
+                if not transient or attempt >= limit:
                     logger.warning(f"{self.name}_error", extra={"fields": {"op": what, "error": err.code, "attempts": attempt + 1, **detail}})
                     raise err from e
                 logger.info(f"{self.name}_retry", extra={"fields": {"op": what, "error": err.code, "attempt": attempt + 1, **detail}})

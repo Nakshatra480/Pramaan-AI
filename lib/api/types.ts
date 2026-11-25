@@ -1,5 +1,5 @@
 /** Wire types returned by the FastAPI backend (camelCase). */
-import type { ActivityKind, ClaimStatus, DocumentKind, IndexingStage, ProjectIcon, ProjectRole, ResearchMode, SourceChannel, SourceType } from "@/types";
+import type { ActivityKind, ClaimStatus, DocumentKind, FollowUpSource, IndexingStage, ProjectIcon, ProjectRole, ResearchMode, SourceChannel, SourceType } from "@/types";
 
 export type BackendResearchStatus =
   | "queued"
@@ -132,6 +132,8 @@ export interface ResearchSummaryDTO {
   shareId: string | null;
   metrics: MetricsDTO;
   errorCode: string | null;
+  parentId?: string | null;
+  revisionInstructions?: string | null;
 }
 
 export interface ResearchDTO extends ResearchSummaryDTO {
@@ -147,7 +149,16 @@ export interface ResearchDTO extends ResearchSummaryDTO {
     limitations: string[];
     citations: { index: number; sourceId: string }[];
   } | null;
-  followUps: { id: string; question: string; createdAt: string; status: "running" | "complete"; answer: string[] }[];
+  followUps: {
+    id: string;
+    question: string;
+    createdAt: string;
+    status: "running" | "complete" | "failed";
+    answer: string[];
+    kind?: "answer" | "revision";
+    revisionId?: string | null;
+    sources?: FollowUpSource[];
+  }[];
   progress: number;
 }
 

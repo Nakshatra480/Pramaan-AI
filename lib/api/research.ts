@@ -45,6 +45,8 @@ function fromSummary(r: ResearchSummaryDTO): Research {
     claims: [],
     followUps: [],
     errorCode: r.errorCode,
+    parentId: r.parentId ?? null,
+    revisionInstructions: r.revisionInstructions ?? null,
   };
 }
 
@@ -60,7 +62,7 @@ function fromDetail(r: ResearchDTO): Research {
     evidence: r.evidence.map((e) => ({ id: e.id, sourceId: e.sourceId, passage: e.passage, relevance: e.relevance, location: e.location ?? undefined })),
     claims: r.claims,
     report: r.report ?? undefined,
-    followUps: r.followUps,
+    followUps: r.followUps.map((f) => ({ ...f, kind: f.kind ?? "answer", revisionId: f.revisionId ?? null, sources: f.sources ?? [] })),
   };
 }
 

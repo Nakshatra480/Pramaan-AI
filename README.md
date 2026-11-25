@@ -195,6 +195,24 @@ sequenceDiagram
 - **Progress without Redis.** The SSE stream polls the database every 0.5 s; with Redis it sleeps until a pub/sub notification (with a 3 s safety poll).
 - **Cancellation, retry and follow-ups** reuse the same queue.
 
+### Follow-ups
+
+Every follow-up on a finished report is routed to one of two workflows (`backend/app/research/follow_ups.py`). The model decides; a keyword heuristic is the fallback when it's unavailable.
+
+```mermaid
+flowchart TD
+    Q["Follow-up on a finished report<br/>POST /research/{id}/follow-ups"] --> C{"Intent<br/>(model, keyword fallback)"}
+    C -- "change the report<br/>“make it shorter”, “focus on India”,<br/>“rewrite it for executives”" --> R["New research session<br/>parent_id → original · revision_instructions"]
+    R --> RG["Full research graph again<br/>instructions guide planner + writer;<br/>length follows the request"]
+    RG --> RR["Revised report shown under the follow-up<br/>(also its own page) — original never edited"]
+    C -- "ask something<br/>“why did costs fall?”, “what about Norway?”" --> S["Fresh search for the question<br/>Tavily (web) ∥ OpenAlex (scholarly)"]
+    S --> E["Evidence: the report's most relevant passages<br/>+ best passages from the new results"]
+    E --> A["Answer with [n] citations → the answer's own source list<br/>(report sources open in the panel; new ones open the page)"]
+```
+
+- **Revisions** are ordinary research jobs: queued, leased, retryable, shown with the same live "thinking" animation, and listed in history as "… (revised)". The revision page links back to the original.
+- **Answers** keep working if a search provider is down — they fall back to the report's own evidence. The thread's earlier questions and the report summary are passed as context, so "what about the second one?" resolves.
+
 ```mermaid
 stateDiagram-v2
     [*] --> queued: POST /research
@@ -304,6 +322,8 @@ erDiagram
     RESEARCH_SESSIONS ||--o| SHARES : "public link"
     RESEARCH_SESSIONS ||--o{ CONVERSATIONS : "follow-ups"
     CONVERSATIONS ||--o{ MESSAGES : contains
+    MESSAGES |o--o| RESEARCH_SESSIONS : "revision (new session)"
+    RESEARCH_SESSIONS |o--o{ RESEARCH_SESSIONS : "parent of revisions"
     USERS ||--o{ ACTIVITY_EVENTS : generates
 
     DOCUMENT_CHUNKS {
@@ -398,7 +418,8 @@ All routes are under `/api/v1` and require a Firebase ID token unless noted. Err
 | `POST /research` (202) · `GET /research` | Start research; history |
 | `GET`, `PATCH`, `DELETE /research/{id}` | Result; save, rename, move; delete |
 | `GET /research/{id}/stream` | Server-Sent Events progress |
-| `POST /research/{id}/retry`, `/cancel`, `/follow-ups` · `PUT /research/{id}/share` | Lifecycle, follow-up questions, public link |
+| `POST /research/{id}/retry`, `/cancel` · `PUT /research/{id}/share` | Lifecycle, public link |
+| `POST /research/{id}/follow-ups` (202) | Ask a follow-up: a change request starts a revised report (`kind: "revision"`, `revisionId`); a question is answered with fresh web + scholarly search (`kind: "answer"`, `sources`) |
 | `GET /shared/{token}` *(public)* | Read-only shared report |
 | `POST /speech/transcriptions` | Transcribe a short voice recording (multipart `audio`, optional `language`); rate-limited, nothing stored |
 

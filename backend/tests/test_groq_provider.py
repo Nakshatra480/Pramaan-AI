@@ -190,3 +190,35 @@ async def test_preflight_checks_model_list_and_caches() -> None:
 
     with pytest.raises(ModelNotInstalled, match=MODEL):
         await provider(other_models).preflight()
+
+
+async def test_short_rate_limit_windows_get_more_attempts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Per-minute token limits ask for a few seconds' wait: retried up to 5 times, then unavailable."""
+    waits: list[float] = []
+
+    async def record(s: float) -> None:
+        waits.append(s)
+
+    monkeypatch.setattr("app.services.llm.hosted.asyncio.sleep", record)
+    calls = 0
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls <= 4:
+            return httpx.Response(429, headers={"retry-after": "3.1"}, json={"error": {"message": "Rate limit reached ... tokens per minute"}})
+        return completion("recovered")
+
+    assert await provider(handler, retries=2).generate(MSG) == "recovered"
+    assert calls == 5 and waits == [3.1, 3.1, 3.1, 3.1]
+
+    calls = 0
+
+    def always(req: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(429, headers={"retry-after": "2"}, json={"error": {"message": "Rate limit reached"}})
+
+    with pytest.raises(ModelUnavailable):
+        await provider(always, retries=2).generate(MSG)
+    assert calls == 6  # bounded

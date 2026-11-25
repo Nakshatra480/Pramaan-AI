@@ -233,6 +233,21 @@ await test("Listen narrates the report beside Share and Export", async (page, ct
   expect((await page.getByRole("region", { name: "Report narration" }).count()) === 0, "player closes");
 });
 
+await test("follow-ups: questions get a sourced answer, change requests a separate revised report", async (page) => {
+  await signIn(page, "/research/r-glp1-cardio");
+  await page.getByLabel("Follow-up question").waitFor({ timeout: 15000 });
+  const original = await page.locator("#summary").innerText();
+  await page.getByLabel("Follow-up question").fill("Which trial showed the biggest reduction?");
+  await page.getByLabel("Ask follow-up").click();
+  await page.getByText("Sources for this answer").waitFor({ timeout: 15000 });
+  await page.getByLabel("Follow-up question").fill("Make the report shorter and simpler");
+  await page.getByLabel("Ask follow-up").click();
+  await page.getByText(/Regenerating the report with your changes/).first().waitFor({ timeout: 15000 });
+  await page.getByText("Revised report", { exact: true }).waitFor({ timeout: 90000 });
+  expect((await page.locator("#summary").innerText()) === original, "original report unchanged");
+  expect((await page.locator('[id^="rev-"][id$="-summary"]').count()) === 1, "revised report shown under the follow-up");
+});
+
 await browser.close();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length} passed, ${failed.length} failed`);

@@ -24,6 +24,7 @@ from app.db.models import ActivityKind, Document, DocumentStatus, ProjectDocumen
 from app.repositories.projects import ActivityRepository
 from app.repositories.research import ResearchRepository
 from app.research.deps import ResearchDeps
+from app.research.follow_ups import revision_context, revision_length
 from app.research.graph import build_graph
 from app.research.llm import ResearchLLM
 from app.research.nodes.evidence import NoSourcesFound
@@ -138,6 +139,14 @@ async def _response_length(user_id: uuid.UUID) -> str:
     return value if value in ("concise", "balanced", "comprehensive") else "balanced"
 
 
+async def _parent_summary(parent_id: uuid.UUID | None) -> list[str]:
+    if parent_id is None:
+        return []
+    async with get_sessionmaker()() as db:
+        report = await db.scalar(select(ResearchSession.report).where(ResearchSession.id == parent_id))
+    return list((report or {}).get("summary") or [])
+
+
 async def _fail(research_id: uuid.UUID, code: str, owner: str | None = None) -> None:
     async with get_sessionmaker()() as db:
         r = await db.get(ResearchSession, research_id, with_for_update=True)
@@ -177,6 +186,11 @@ async def run_research(research_id: uuid.UUID, owner: str | None = None) -> None
             await db.commit()
 
         instructions, doc_ids, prior = await _context(research)
+        length = await _response_length(research.user_id)
+        if research.revision_instructions:
+            # A revision (asked as a follow-up): same question, regenerated with the user's requested changes.
+            instructions = revision_context(research.revision_instructions, await _parent_summary(research.parent_id), instructions)
+            length = revision_length(research.revision_instructions, length)
         state: ResearchState = {
             "research_id": research.id,
             "user_id": research.user_id,
@@ -185,7 +199,7 @@ async def run_research(research_id: uuid.UUID, owner: str | None = None) -> None
             "mode": research.mode,
             "channels": list(research.channels),  # type: ignore[typeddict-item,arg-type]
             "project_instructions": instructions,
-            "response_length": await _response_length(research.user_id),
+            "response_length": length,
             "prior_research": prior,
             "allowed_document_ids": doc_ids,
             "sources": [],

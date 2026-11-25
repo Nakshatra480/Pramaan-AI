@@ -1,7 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, ArrowUp, CornerDownRight, RotateCcw } from "lucide-react";
 import { forwardRef, useEffect, useState, useSyncExternalStore } from "react";
-import { PramaanLoader } from "@/components/brand/PramaanLoader";
 import { useToast } from "@/components/providers/ToastProvider";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -11,11 +10,11 @@ import { formatRelative } from "@/lib/utils/format";
 import { pendingFollowUps, visiblePending } from "@/lib/utils/pending-follow-ups";
 import type { FollowUp } from "@/types";
 import { useResearch } from "./ResearchContext";
-import { RichText } from "./RichText";
+import { FollowUpAnswer, RevisionCard } from "./FollowUpResults";
+import { ThinkingIndicator } from "./Thinking";
 
-const SUGGESTIONS: Record<string, string[]> = {
-  default: ["What are the strongest counter-arguments?", "Which findings are most likely to change in the next year?", "Summarise this for a non-specialist."],
-};
+/** A mix of both kinds of follow-up: questions (answered with fresh search) and changes (a regenerated report). */
+const SUGGESTIONS = ["What are the strongest counter-arguments?", "What has changed most recently?", "Make the report shorter and simpler", "Rewrite it for a non-specialist"];
 
 /**
  * Ask a follow-up with instant feedback: the question and its loading card appear immediately, before
@@ -65,16 +64,15 @@ export function FollowUpThread() {
           <div className="flex items-start gap-3">
             <CornerDownRight className="size-4 mt-2 text-ink-faint shrink-0" />
             <div className="min-w-0 flex-1">
-              <p className="eyebrow">Follow-up · {formatRelative(f.createdAt)}</p>
+              <p className="eyebrow">
+                {f.kind === "revision" ? "Report revision" : "Follow-up"} · {formatRelative(f.createdAt)}
+              </p>
               <h3 className="mt-2 font-display text-[26px] leading-tight text-ink">{f.question}</h3>
               <AnimatePresence mode="wait">
                 {f.status === "running" ? (
-                  <motion.div key="run" exit={{ opacity: 0 }} className="mt-5 flex items-center gap-4 rounded-xl border border-line bg-surface p-4">
-                    <PramaanLoader size={44} label="Researching follow-up" />
-                    <div>
-                      <p className="text-[14px] font-medium text-ink">Answering from this research</p>
-                      <p className="text-[13px] text-ink-muted">Finding the most relevant passages among the evidence already collected…</p>
-                    </div>
+                  <motion.div key="run" exit={{ opacity: 0 }} className="mt-5 rounded-xl border border-line bg-surface p-4">
+                    <ThinkingIndicator since={f.createdAt} />
+                    <p className="mt-2 pl-11 text-[13px] text-ink-muted">Reading your follow-up, searching the web and scholarly literature, and re-checking this research&rsquo;s evidence…</p>
                   </motion.div>
                 ) : f.status === "failed" ? (
                   <motion.div key="failed" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-5 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface p-4">
@@ -86,13 +84,13 @@ export function FollowUpThread() {
                       </Button>
                     )}
                   </motion.div>
+                ) : f.kind === "revision" && f.revisionId ? (
+                  <motion.div key="revision" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+                    <RevisionCard revisionId={f.revisionId} instructions={f.question} since={f.createdAt} />
+                  </motion.div>
                 ) : (
-                  <motion.div key="done" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 prose-report">
-                    {f.answer.map((p, i) => (
-                      <p key={i}>
-                        <RichText text={p} />
-                      </p>
-                    ))}
+                  <motion.div key="done" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+                    <FollowUpAnswer followUp={f} />
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -143,18 +141,18 @@ export const FollowUpComposer = forwardRef<HTMLTextAreaElement>(function FollowU
             }
           }}
           maxLength={1000}
-          placeholder="Ask a follow-up — Pramaan answers from the evidence in this research…"
+          placeholder="Ask a question, or ask Pramaan to change the report (e.g. “make it shorter”)…"
           className="block w-full resize-none bg-transparent outline-none focus-visible:outline-none px-4 pt-4 pb-2 text-[15px] placeholder:text-ink-faint min-h-[56px]"
         />
         <div className="flex items-center justify-between gap-2 px-3 pb-3">
-          <p className="text-[12px] text-ink-faint pl-1">Continues this research session</p>
+          <p className="text-[12px] text-ink-faint pl-1">Questions are answered with fresh sources · change requests create a revised report</p>
           <button type="submit" disabled={!q.trim() || running} aria-label="Ask follow-up" className="grid place-items-center size-9 rounded-xl bg-ink text-bg disabled:opacity-30 active:scale-95 transition-transform">
             {running ? <Spinner /> : <ArrowUp className="size-4" />}
           </button>
         </div>
       </form>
       <div className="mt-3 flex flex-wrap gap-2">
-        {SUGGESTIONS.default.map((s) => (
+        {SUGGESTIONS.map((s) => (
           <button key={s} type="button" disabled={running} onClick={() => submit(s)} className={cn("h-8 px-3 rounded-full border border-line text-[12.5px] text-ink-muted hover:text-ink hover:border-line-strong transition-colors disabled:opacity-40")}>
             {s}
           </button>

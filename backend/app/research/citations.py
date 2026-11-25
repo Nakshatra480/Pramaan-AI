@@ -36,6 +36,15 @@ FIDELITY = 0.2
 _SENTENCE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9“\"(])|(?<=\])\s+(?=[A-Z“\"(])")
 
 
+# Adjacent citation groups ("[1] [2] [2][3]") — merged into one ordered, de-duplicated run: " [1][2][3]".
+_RUN = re.compile(r"(?:\s*\[\d{1,3}\]){2,}")
+
+
+def _tidy_run(m: re.Match[str]) -> str:
+    nums = list(dict.fromkeys(int(n) for n in re.findall(r"\d+", m.group(0))))
+    return " " + "".join(f"[{n}]" for n in nums)
+
+
 class CitationMapper:
     def __init__(self, claims: list[ClaimItem], evidence: list[EvidenceItem]) -> None:
         self.claims = {c.id: c for c in claims}
@@ -80,6 +89,7 @@ class CitationMapper:
         out = pattern.sub(repl, text)
         # Strip markers of the other kind too — nothing unresolved survives.
         out = _CLAIM_MARK.sub("", out) if kind != "claim" else _EVIDENCE_MARK.sub("", out)
+        out = _RUN.sub(_tidy_run, out)
         return re.sub(r"\s+([.,;:])", r"\1", out).strip()
 
     def _faithful_markers(self, sentence: str) -> str:

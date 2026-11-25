@@ -105,3 +105,12 @@ def test_fidelity_accepts_paraphrase_and_hedging() -> None:
     m = CitationMapper(ORCHID, ORCHID_EV)
     assert m.render("Evidence partially indicates that sensor logs are kept for 41 days under the Orchid Protocol [C1].").endswith("Protocol [1].")
     assert m.render("Meridian's reliability team owns the Orchid Protocol [C2].").endswith("Protocol [1].")
+
+
+def test_adjacent_citations_are_merged_and_deduplicated() -> None:
+    from app.research.citations import CitationMapper
+    from app.research.state import EvidenceItem
+
+    ev = [EvidenceItem(id=f"E{i}", source_key=k, passage="p", relevance=0.5) for i, k in enumerate(["a", "b", "b", "c"], start=1)]
+    out = CitationMapper([], ev).render("Leaders are Mitsubishi and Daikin [E1] [E2] [E3][E4]. Done [E1].", kind="evidence")
+    assert out == "Leaders are Mitsubishi and Daikin [1][2][3]. Done [1]."

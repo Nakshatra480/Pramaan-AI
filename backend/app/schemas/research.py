@@ -106,12 +106,31 @@ class ReportOut(ApiModel):
     citations: list[CitationOut]
 
 
+class FollowUpSource(ApiModel):
+    """A source cited by a follow-up answer; the answer's [n] is the n-th entry."""
+
+    title: str
+    url: str
+    domain: str
+    publisher: str
+    type: SourceType
+    published_at: date | None = None
+    authors: list[str] = []
+    origin: Literal["report", "web", "academic"]
+    source_id: uuid.UUID | None = None  # set when it's one of the report's own sources (opens in the panel)
+
+
 class FollowUpOut(ApiModel):
     id: uuid.UUID
     question: str
     created_at: datetime
     status: Literal["running", "complete", "failed"]
     answer: list[str]
+    # "answer": answered from the report + fresh search. "revision": the report is being regenerated
+    # with the requested changes as a new research session (`revision_id`); the original stays as it is.
+    kind: Literal["answer", "revision"] = "answer"
+    revision_id: uuid.UUID | None = None
+    sources: list[FollowUpSource] = []
 
 
 class ResearchSummaryOut(ApiModel):
@@ -129,6 +148,8 @@ class ResearchSummaryOut(ApiModel):
     share_id: str | None
     metrics: Metrics
     error_code: str | None = None
+    parent_id: uuid.UUID | None = None  # set on a revision: the research it regenerates
+    revision_instructions: str | None = None
 
 
 class ResearchOut(ResearchSummaryOut):

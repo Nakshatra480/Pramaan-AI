@@ -1,5 +1,5 @@
 /** Research session types. Mirrors `research_sessions`, `research_steps`, `claims`, `citations` (PRD §21–§25). */
-import type { Evidence, Source } from "./source";
+import type { Evidence, Source, SourceType } from "./source";
 
 export type ResearchMode = "quick" | "standard" | "deep";
 export type SourceChannel = "web" | "academic" | "project" | "library";
@@ -76,12 +76,34 @@ export interface ResearchReport {
   citations: Citation[];
 }
 
+/** A source cited by a follow-up answer — `[n]` in the answer is `sources[n - 1]`. */
+export interface FollowUpSource {
+  title: string;
+  url: string;
+  domain: string;
+  publisher: string;
+  type: SourceType;
+  publishedAt?: string | null;
+  authors: string[];
+  /** Where it came from: the report's own sources, or a fresh web (Tavily) / scholarly (OpenAlex) search. */
+  origin: "report" | "web" | "academic";
+  /** Set when it is one of the report's sources (opens in the side panel). */
+  sourceId?: string | null;
+}
+
 export interface FollowUp {
   id: string;
   question: string;
   createdAt: string;
   status: "running" | "complete" | "failed";
   answer: RichText[];
+  /**
+   * "answer": a question answered from the report plus a fresh search.
+   * "revision": a request to change the report — regenerated as a new research (`revisionId`); the original is untouched.
+   */
+  kind?: "answer" | "revision";
+  revisionId?: string | null;
+  sources?: FollowUpSource[];
 }
 
 export interface ResearchMetrics {
@@ -119,6 +141,9 @@ export interface Research {
   steps?: ResearchStep[];
   progress?: number;
   errorCode?: string | null;
+  /** On a revision: the research it regenerates, and the changes that were asked for. */
+  parentId?: string | null;
+  revisionInstructions?: string | null;
 }
 
 export interface ResearchInput {

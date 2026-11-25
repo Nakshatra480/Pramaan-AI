@@ -1,9 +1,11 @@
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Check } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore } from "react";
-import { PramaanMark } from "@/components/brand/PramaanMark";
+import { motion } from "framer-motion";
 import { MODES } from "@/components/research/research-options";
 import type { Project, Research, ResearchProgressEvent } from "@/types";
+import { THINKING_WORDS, ThinkingIndicator, useHydratedReducedMotion } from "./Thinking";
+
+export { THINKING_WORDS };
+
+const EASE = [0.22, 1, 0.36, 1] as const;
 
 interface Props {
   research: Research;
@@ -14,63 +16,13 @@ interface Props {
   resolving?: boolean;
 }
 
-/** Playful "thinking" verbs, rotated while research runs. Purely decorative — they don't describe real steps. */
-export const THINKING_WORDS = [
-  "Mulling",
-  "Sifting",
-  "Pondering",
-  "Cross-checking",
-  "Manifesting",
-  "Weighing evidence",
-  "Untangling",
-  "Corroborating",
-  "Ruminating",
-  "Triangulating",
-  "Distilling",
-  "Unearthing",
-  "Deliberating",
-  "Piecing it together",
-  "Percolating",
-  "Fact-finding",
-  "Contemplating",
-  "Synthesising",
-] as const;
-
-const WORD_MS = 2600;
-const EASE = [0.22, 1, 0.36, 1] as const;
-const noopSubscribe = () => () => {};
-
-function useElapsed(since: string, running: boolean) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!running) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [running]);
-  const s = Math.max(0, Math.floor((now - new Date(since).getTime()) / 1000));
-  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
-}
-
 /**
  * The research loading screen, shaped like a chat: the question as the user's message, and
  * Pramaan "thinking" beneath it — an animated mark and a rotating word with a soft shimmer.
  */
 export function ResearchProgressView({ research, project, resolving = false }: Props) {
-  // Read the motion preference only after hydration so server and client renders match.
-  const prefersReduced = useReducedMotion() ?? false;
-  const hydrated = useSyncExternalStore(noopSubscribe, () => true, () => false);
-  const reduce = hydrated && prefersReduced;
-  const live = !resolving;
-
-  const [i, setI] = useState(0);
-  useEffect(() => {
-    if (!live) return;
-    const t = setInterval(() => setI((n) => (n + 1) % THINKING_WORDS.length), WORD_MS);
-    return () => clearInterval(t);
-  }, [live]);
-  const elapsed = useElapsed(research.createdAt, live && hydrated);
+  const { reduce } = useHydratedReducedMotion();
   const mode = MODES.find((m) => m.value === research.mode)?.label ?? "Research";
-  const word = THINKING_WORDS[i];
 
   return (
     <div className="mx-auto w-full max-w-[760px] px-4 sm:px-6 pt-10 sm:pt-14 pb-24 min-h-[calc(100dvh-7rem)]" aria-busy={!resolving}>
@@ -102,56 +54,12 @@ export function ResearchProgressView({ research, project, resolving = false }: P
 
       {/* Pramaan thinking */}
       <motion.div
-        className="mt-8 flex items-center gap-3"
+        className="mt-8"
         initial={reduce ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45, delay: 0.25, ease: EASE }}
-        aria-hidden
       >
-        <span className="relative grid place-items-center size-8 shrink-0">
-          {!reduce && live && (
-            <motion.span
-              className="absolute inset-0 rounded-full border-[1.5px] border-transparent border-t-sage-ink border-r-sage-ink/40"
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1.6, ease: "linear", repeat: Infinity }}
-            />
-          )}
-          <motion.span
-            animate={!reduce && live ? { scale: [1, 0.9, 1] } : { scale: 1 }}
-            transition={!reduce && live ? { duration: 2.2, ease: "easeInOut", repeat: Infinity } : { duration: 0.3 }}
-          >
-            <PramaanMark size={20} sparkle={false} />
-          </motion.span>
-        </span>
-
-        <span className="relative h-6 flex items-center min-w-0">
-          <AnimatePresence mode="wait" initial={false}>
-            {resolving ? (
-              <motion.span
-                key="done"
-                className="inline-flex items-center gap-1.5 text-[15px] font-medium text-sage-ink"
-                initial={reduce ? false : { opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                <Check className="size-4" /> Report ready
-              </motion.span>
-            ) : (
-              <motion.span
-                key={word}
-                className={reduce ? "text-[15px] font-medium text-ink-muted" : "thinking-shimmer text-[15px] font-medium"}
-                initial={reduce ? false : { opacity: 0, y: 6, filter: "blur(3px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                exit={reduce ? { opacity: 0 } : { opacity: 0, y: -6, filter: "blur(3px)" }}
-                transition={{ duration: 0.35, ease: EASE }}
-              >
-                {word}…
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </span>
-
-        {hydrated && !resolving && <span className="ml-1 text-[12.5px] tabular text-ink-faint">{elapsed}</span>}
+        <ThinkingIndicator since={research.createdAt} done={resolving} doneLabel="Report ready" />
       </motion.div>
 
       <motion.p

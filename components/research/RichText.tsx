@@ -1,5 +1,3 @@
-"use client";
-
 import { Fragment } from "react";
 import { parseRichText } from "@/lib/utils/citations";
 import { Citation } from "./Citation";

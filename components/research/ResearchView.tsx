@@ -1,5 +1,3 @@
-"use client";
-
 import { AnimatePresence, motion } from "framer-motion";
 import { Layers } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";

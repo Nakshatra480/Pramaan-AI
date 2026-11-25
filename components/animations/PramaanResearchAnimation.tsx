@@ -1,5 +1,3 @@
-"use client";
-
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { PramaanMark } from "@/components/brand/PramaanMark";

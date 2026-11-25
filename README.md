@@ -4,7 +4,7 @@
 
 | | |
 | --- | --- |
-| **Live app** | Vercel (Next.js) |
+| **Live app** | Vercel (static React app, Vite) |
 | **API** | Render (FastAPI, native Python) |
 | **Status** | Production — free-tier infrastructure |
 
@@ -35,12 +35,13 @@
 ```mermaid
 flowchart LR
     subgraph Client["Browser"]
-        UI["Next.js 16 app<br/>(React 19, Tailwind v4)"]
+        UI["React 19 single-page app<br/>(Vite, React Router, Tailwind v4)"]
         FBSDK["Firebase Web SDK"]
+        SPEECH["Web Speech API<br/>voice input · narration"]
     end
 
     subgraph Vercel["Vercel"]
-        NEXT["Static + server-rendered pages<br/>CSP & security headers"]
+        HOST["Static build (dist/)<br/>SPA rewrites · security headers"]
     end
 
     subgraph Render["Render · pramaan-api"]
@@ -56,7 +57,7 @@ flowchart LR
     end
 
     subgraph Providers["Model & search providers"]
-        GROQ["Groq<br/>openai/gpt-oss-120b"]
+        GROQ["Groq<br/>openai/gpt-oss-120b<br/>whisper-large-v3-turbo"]
         OR["OpenRouter<br/>768-d embeddings"]
         TAV["Tavily<br/>web search"]
         OA["OpenAlex<br/>academic search"]
@@ -64,7 +65,8 @@ flowchart LR
 
     FIREBASE["Firebase Authentication"]
 
-    UI --> NEXT
+    UI --> HOST
+    UI --- SPEECH
     FBSDK <--> FIREBASE
     UI -- "HTTPS + Firebase ID token<br/>REST · Server-Sent Events" --> API
     API -- "verify ID token (Admin SDK)" --> FIREBASE
@@ -77,11 +79,13 @@ flowchart LR
     GRAPH --> TAV
     GRAPH --> OA
     GRAPH <--> NEON
+    API -- "voice fallback" --> GROQ
 ```
 
 | Layer | Technology | Responsibility |
 | --- | --- | --- |
-| Frontend | Next.js 16 (App Router), React 19, TypeScript, Tailwind v4, Framer Motion | UI, routing, streaming progress, demo mode |
+| Frontend | React 19, Vite, React Router, TypeScript, Tailwind v4, Framer Motion | Single-page app: UI, client-side routing, streaming progress, demo mode |
+| Voice | Web Speech API (browser); Groq Whisper fallback | Dictating questions; reading reports aloud |
 | Identity | Firebase Authentication (email/password, Google) | Sign-in; the backend verifies ID tokens with the Admin SDK |
 | API | FastAPI, SQLAlchemy 2 (async, asyncpg), Pydantic v2 | REST API, SSE progress stream, access control |
 | Research | LangGraph | Multi-agent research pipeline (§2) |
@@ -89,6 +93,7 @@ flowchart LR
 | Database | Neon PostgreSQL + pgvector (HNSW, 768-d) | All application data, document chunks and vectors |
 | Files | Supabase Storage via its S3-compatible API | Uploaded originals and extracted text |
 | Text generation | Groq — `openai/gpt-oss-120b` | Planning, claim extraction, verification, synthesis |
+| Speech-to-text | Groq — `whisper-large-v3-turbo` | Voice input in browsers without built-in recognition |
 | Embeddings | OpenRouter — `nvidia/nemotron-3.5-embed-8b:free`, 768 dimensions | Semantic ranking and retrieval |
 | Search | Tavily (web), OpenAlex (academic) | Source discovery |
 | Cache (optional) | Redis (Upstash) | Shared rate limits, search & query-embedding caches, progress pub/sub |
@@ -158,7 +163,7 @@ Research never runs inside an HTTP request. It is queued in Postgres, claimed by
 sequenceDiagram
     autonumber
     actor U as User
-    participant W as Next.js app
+    participant W as Web app (React)
     participant A as FastAPI
     participant DB as Neon Postgres
     participant Q as Job worker
@@ -353,19 +358,22 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    PAGES["app/ routes<br/>(marketing) · auth · onboarding · (workspace) · shared"] --> COMP["components/<br/>feature + design-system components"]
+    MAIN["app/main.tsx → app/router.tsx<br/>React Router, lazy route chunks"] --> PAGES
+    PAGES["app/routes/<br/>marketing · auth · workspace · projects · settings · shared"] --> COMP["components/<br/>feature + design-system components"]
     COMP --> HOOKS["useResource · usePreferences · useAuth"]
     HOOKS --> SVC["lib/services — the service boundary"]
-    SVC -->|NEXT_PUBLIC_DATA_SOURCE=api| APIAD["lib/api adapters<br/>ID token, 401 refresh, error envelope, SSE"]
+    SVC -->|VITE_DATA_SOURCE=api| APIAD["lib/api adapters<br/>ID token, 401 refresh, error envelope, SSE"]
     SVC -->|=mock| MOCK["lib/mock adapters<br/>in-browser demo data"]
     APIAD --> BACKEND["FastAPI"]
     APIAD --> EVENTS["apiEvents — change feed<br/>mutations trigger refetch"]
     EVENTS --> HOOKS
 ```
 
+- **Single-page app.** Vite builds a static bundle; `app/router.tsx` maps every URL to a lazily loaded route module (one chunk per area), with layouts as nested routes. Page titles are set per route; unknown paths render the not-found page and the host returns a real 404 for them (§13).
 - **One service boundary.** UI code only talks to `services.*`. API and mock adapters share one typed surface, so the app runs fully in **demo mode** without a backend.
 - **Research view** follows the real job state: a branded loading screen while queued/running, the cited report on completion, and a side panel listing every source (a sheet on small screens).
 - **Preferences** (default mode and sources, citation style — numeric, APA, MLA or Chicago — response length, notifications, retention) are stored on the profile and follow the account across devices; theme and motion stay per device.
+- **Voice.** The mic button in the research composer dictates a question — live, word by word, with the browser's speech recognition (Chrome, Edge, Safari); browsers without it (Firefox) record a short clip that `POST /speech/transcriptions` transcribes with Groq Whisper (never stored). **Listen** (beside Share and Export) reads the whole report aloud with the browser's speech synthesis: title, summary, findings, analysis, evidence and limitations, without citation markers; a docked player pauses, skips between sections, and changes speed and voice, and the section being read is marked in the report.
 - **Accessibility:** WCAG 2 AA contrast, labelled controls, focus-trapped dialogs, larger touch targets on coarse pointers, reduced-motion support.
 
 ---
@@ -392,6 +400,7 @@ All routes are under `/api/v1` and require a Firebase ID token unless noted. Err
 | `GET /research/{id}/stream` | Server-Sent Events progress |
 | `POST /research/{id}/retry`, `/cancel`, `/follow-ups` · `PUT /research/{id}/share` | Lifecycle, follow-up questions, public link |
 | `GET /shared/{token}` *(public)* | Read-only shared report |
+| `POST /speech/transcriptions` | Transcribe a short voice recording (multipart `audio`, optional `language`); rate-limited, nothing stored |
 
 Interactive docs (`/docs`, `/redoc`, `/openapi.json`) are available in development only.
 
@@ -405,7 +414,7 @@ Interactive docs (`/docs`, `/redoc`, `/openapi.json`) are available in developme
 
 ```bash
 npm install
-NEXT_PUBLIC_DATA_SOURCE=mock npm run dev        # http://localhost:3000
+VITE_DATA_SOURCE=mock npm run dev               # http://localhost:3000
 ```
 
 ### Full stack
@@ -420,7 +429,7 @@ createdb pramaan && psql pramaan -c 'CREATE EXTENSION IF NOT EXISTS vector'
 .venv/bin/uvicorn app.main:app --reload --port 8000
 
 # 2. Frontend (repository root)
-cp .env.example .env.local                        # Firebase web config + NEXT_PUBLIC_API_URL=http://localhost:8000
+cp .env.example .env.local                        # Firebase web config + VITE_API_URL=http://localhost:8000
 npm run dev
 ```
 
@@ -441,7 +450,7 @@ Set `STORAGE_BACKEND=local` to keep files on disk during development. `LLM_PROVI
 ```bash
 # Frontend
 npm run lint && npm run typecheck && npm test     # ESLint, tsc, Vitest
-npm run build
+npm run build && npm run preview                  # production bundle in dist/, served like Vercel serves it
 
 # Backend (needs a migrated database whose name contains "test")
 cd backend
@@ -457,8 +466,8 @@ node e2e/workflows.mjs --real-research            # signed-in workflows: emulato
 | Suite | Covers |
 | --- | --- |
 | Backend (pytest, real Postgres + pgvector) | Cross-user isolation, job leases and recovery, research pipeline, citation mapping and fidelity, provider failures (Groq, OpenRouter), S3 storage (moto), Redis (fakeredis), account deletion/export/retention, members, search |
-| Frontend (Vitest) | Research phase logic, API mapping, citation styles, preference sync, upload rules, redirects, validation, security headers |
-| `e2e/smoke.mjs` | Headers, pricing, privacy page, auth validation and deep links, responsive settings, billing, search, composer limits, dialog focus |
+| Frontend (Vitest) | Research phase logic, API mapping, citation styles, preference sync, upload rules, redirects, validation, security headers, hosting rewrites, narration script, dictation |
+| `e2e/smoke.mjs` | Headers, real 404s, pricing, privacy page, auth validation and deep links, responsive settings, billing, search, composer limits, dialog focus, voice input, Listen |
 | `e2e/workflows.mjs` | Real backend: search, preference sync, members, uploads and duplicates, deletes, attachments, export, billing, account deletion, real research |
 
 **CI** (`.github/workflows/ci.yml`) runs on every push to `main` and every pull request: lint, types, unit tests, production build and the e2e smoke suite for the frontend; ruff, format check, mypy, migrations and the full pytest suite against `pgvector/pgvector:pg17` for the backend.
@@ -478,7 +487,7 @@ flowchart LR
 
 | Target | How |
 | --- | --- |
-| **Frontend → Vercel** | Deploys automatically from `main`. Configure the `NEXT_PUBLIC_*` variables (no secrets in the frontend). |
+| **Frontend → Vercel** | Deploys automatically from `main` as a static Vite build (`vercel.json`: framework `vite`, output `dist/`). App routes are rewritten to `index.html`; any other path gets `404.html` with a real 404 status. Security headers are served from `vercel.json`; the Content-Security-Policy is a `<meta>` tag generated at build time from the environment. Configure the `VITE_*` variables (no secrets in the frontend). |
 | **API → Render** | Native Python service defined in `render.yaml`: `pip install -r requirements.txt`, then gunicorn with one Uvicorn worker (long timeout for SSE). Deploy from the dashboard or `render deploys create <service-id>`. |
 | **Database → Neon** | Use the **pooled** connection string for `DATABASE_URL` and the direct one for `MIGRATIONS_DATABASE_URL`. Run `alembic upgrade head` whenever the schema changes — never at service start. |
 | **Files → Supabase Storage** | Private bucket, S3 endpoint `https://<project-ref>.supabase.co/storage/v1/s3`, path-style addressing. |
@@ -499,6 +508,7 @@ Production refuses to start without TLS to the database, durable object storage,
 | `CORS_ORIGINS` | Comma-separated allowed origins (no wildcards) |
 | `FIREBASE_PROJECT_ID` | Firebase project used to verify ID tokens |
 | `LLM_PROVIDER`, `GROQ_API_KEY`, `GROQ_MODEL` | Text generation (`groq` or `fake`) |
+| `GROQ_STT_MODEL`, `MAX_AUDIO_BYTES`, `SPEECH_PER_MINUTE` | Voice-input fallback (default `whisper-large-v3-turbo`, 10 MB, 12 per user per minute) |
 | `EMBEDDING_PROVIDER`, `OPENROUTER_API_KEY`, `EMBEDDING_MODEL`, `EMBEDDING_DIM` | Embeddings (`openrouter` or `fake`); dimension must stay 768 |
 | `OPENROUTER_TIMEOUT_S`, `OPENROUTER_RETRIES` | Embedding call bounds (default 25 s, 1 retry) |
 | `TAVILY_API_KEY`, `OPENALEX_MAILTO` | Web and academic search |
@@ -512,10 +522,12 @@ Production refuses to start without TLS to the database, durable object storage,
 
 | Variable | Purpose |
 | --- | --- |
-| `NEXT_PUBLIC_DATA_SOURCE` | `api` or `mock` (demo mode) |
-| `NEXT_PUBLIC_API_URL` | Backend base URL (also added to the CSP `connect-src`) |
-| `NEXT_PUBLIC_FIREBASE_*` | Firebase web config; `NEXT_PUBLIC_FIREBASE_USE_EMULATOR=true` for the emulator |
-| `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY` | Optional App Check (reCAPTCHA v3) |
+| `VITE_DATA_SOURCE` | `api` or `mock` (demo mode) |
+| `VITE_API_URL` | Backend base URL (also added to the CSP `connect-src`) |
+| `VITE_FIREBASE_*` | Firebase web config; `VITE_FIREBASE_USE_EMULATOR=true` for the emulator (refused in production builds) |
+| `VITE_FIREBASE_APPCHECK_SITE_KEY` | Optional App Check (reCAPTCHA v3) |
+
+These are read at build time and embedded in the bundle, so change them in Vercel and redeploy.
 
 ---
 
@@ -523,13 +535,15 @@ Production refuses to start without TLS to the database, durable object storage,
 
 | Path | Contents |
 | --- | --- |
-| `app/` | Next.js routes — `(marketing)`, `auth`, `onboarding`, `(workspace)`, `shared` |
+| `index.html`, `app/main.tsx`, `app/router.tsx` | Entry page, React root and the route table |
+| `app/root.tsx`, `app/routes/` | Root layout, error and not-found pages; route modules per area (marketing, auth, workspace, projects, settings, shared) |
 | `components/` | Design system (`ui`, `brand`, `animations`) and feature components (`research`, `library`, `projects`, `settings`, `layout`, …) |
 | `lib/services/` | The frontend service boundary |
 | `lib/api/` | API client and typed adapters |
 | `lib/mock/`, `data/` | Demo-mode adapters and seed data |
 | `lib/firebase/` | Firebase initialisation (auth, optional App Check and Analytics) |
-| `lib/security/` | Security headers / CSP |
+| `lib/security/`, `lib/hosting.ts`, `vercel.json`, `vite.config.ts` | Security headers / CSP, SPA rewrites and 404s, build config |
+| `lib/speech/` | Voice input (speech recognition + recording fallback) and report narration |
 | `lib/utils/`, `lib/hooks/` | Shared logic and React hooks |
 | `tests/`, `e2e/` | Vitest unit tests; Playwright smoke and workflow suites |
 | `backend/app/api/` | FastAPI routes and dependencies |

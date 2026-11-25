@@ -1,9 +1,7 @@
-"use client";
-
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, Mail } from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link } from "@/components/ui/Link";
+import { useRouter } from "@/lib/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PramaanResearchAnimation } from "@/components/animations/PramaanResearchAnimation";
 import { VerificationMark } from "@/components/animations/VerificationMark";

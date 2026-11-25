@@ -1,7 +1,5 @@
-"use client";
-
 import { ArrowRight } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@/components/ui/Link";
 import { useEffect, useState } from "react";
 import { SlideUp } from "@/components/animations/Motion";
 import { useAuth } from "@/components/providers/AuthProvider";

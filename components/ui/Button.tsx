@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/components/ui/Link";
 import { forwardRef, type ButtonHTMLAttributes, type ComponentProps, type ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
 import { Spinner } from "./Spinner";

@@ -1,5 +1,5 @@
 import { BookOpen, FileText, ShieldCheck } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@/components/ui/Link";
 import type { ReactNode } from "react";
 import { BackendPrewarm } from "@/components/ui/ServerWakeHint";
 import { PramaanMark } from "@/components/brand/PramaanMark";
@@ -59,7 +59,6 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           </blockquote>
         </aside>
         <div className="relative flex flex-col px-6 sm:px-12 lg:px-16 py-8 lg:overflow-y-auto">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/auth/leaf.png" alt="" aria-hidden className="pointer-events-none absolute right-0 top-0 w-[96px] select-none" />
           <Link href="/" aria-label="Pramaan AI home" className="lg:hidden flex items-center gap-3 self-start">
             <PramaanMark size={26} sparkle={false} />

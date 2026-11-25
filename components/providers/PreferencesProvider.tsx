@@ -1,5 +1,3 @@
-"use client";
-
 import { MotionConfig } from "framer-motion";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { DEFAULT_PREFERENCES } from "@/lib/mock/preferences";

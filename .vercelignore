@@ -1,4 +1,4 @@
-# Vercel deploys only the Next.js frontend. Keep the backend, its env files and local tooling out of uploads.
+# Vercel deploys only the Vite frontend. Keep the backend, its env files and local tooling out of uploads.
 backend/
 deploy/
 docs/

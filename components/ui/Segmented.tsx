@@ -1,5 +1,3 @@
-"use client";
-
 import { motion } from "framer-motion";
 import { useId, type ReactNode } from "react";
 import { spring } from "@/lib/motion";

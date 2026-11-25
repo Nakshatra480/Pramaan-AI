@@ -1,8 +1,6 @@
-"use client";
-
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, FileUp, ListChecks } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation";
 import { useState } from "react";
 import { VerificationMark } from "@/components/animations/VerificationMark";
 import { useWorkspace } from "@/components/layout/WorkspaceContext";

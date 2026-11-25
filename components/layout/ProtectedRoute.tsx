@@ -1,6 +1,4 @@
-"use client";
-
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter } from "@/lib/navigation";
 import { useEffect, type ReactNode } from "react";
 import { PramaanLoader } from "@/components/brand/PramaanLoader";
 import { useAuth } from "@/components/providers/AuthProvider";

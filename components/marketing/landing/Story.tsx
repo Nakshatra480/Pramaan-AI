@@ -1,5 +1,3 @@
-"use client";
-
 import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
 import {
   ArrowRight,
@@ -22,7 +20,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@/components/ui/Link";
 import { Fragment, useRef, useState } from "react";
 import { PramaanMark } from "@/components/brand/PramaanMark";
 import { ClaimStatusBadge } from "@/components/ui/StatusIndicator";
@@ -763,7 +761,6 @@ export function FinalCTA() {
           </div>
           <div className="relative min-h-[260px] overflow-hidden">
             <motion.div style={{ scale }} className="absolute inset-0">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/auth/coast.png" alt="A lighthouse on a rocky coast at dawn, beside a stack of research books" className="size-full object-cover object-top" />
             </motion.div>
             <div aria-hidden className="absolute inset-0 bg-gradient-to-r from-[#1F2A22] via-[#1F2A22]/40 to-transparent lg:via-[#1F2A22]/20" />

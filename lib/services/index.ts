@@ -5,7 +5,7 @@
  * implementations share one surface:
  *   - "api":  Firebase Authentication + the FastAPI backend (lib/api/*)
  *   - "mock": in-browser demo data (lib/mock/*)
- * Selected by NEXT_PUBLIC_DATA_SOURCE (see lib/api/config.ts). Each API
+ * Selected by VITE_DATA_SOURCE (see lib/api/config.ts). Each API
  * adapter is typed as its mock counterpart, so the compiler keeps them in sync.
  */
 import { firebaseAuthService } from "@/lib/api/auth";
@@ -16,6 +16,7 @@ import { apiProjectService } from "@/lib/api/projects";
 import { apiResearchService } from "@/lib/api/research";
 import { apiSearchAll } from "@/lib/api/search";
 import { apiSourceService } from "@/lib/api/sources";
+import { apiTranscribe } from "@/lib/api/speech";
 import { authService } from "@/lib/mock/auth";
 import { db } from "@/lib/mock/db";
 import { libraryService } from "@/lib/mock/library";
@@ -42,6 +43,8 @@ export const services = {
   sources,
   preferences: preferencesService,
   search: (api ? apiSearchAll : searchAll) as typeof searchAll,
+  /** Server-side transcription for voice input where the browser can't transcribe itself (API mode only). */
+  speech: { transcribe: api ? apiTranscribe : null },
   /** Change feed — mock store updates, or API mutations/polls. */
   subscribe: api ? apiEvents.subscribe : db.subscribe,
 };

@@ -1,8 +1,6 @@
-"use client";
-
 import { motion } from "framer-motion";
 import { AlertTriangle, ArrowDownUp, FolderClosed, Search, X } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@/components/ui/Link";
 import { useMemo, useState } from "react";
 import { MODES } from "@/components/research/research-options";
 import { ButtonLink } from "@/components/ui/Button";

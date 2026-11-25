@@ -1,6 +1,4 @@
-"use client";
-
-import Link from "next/link";
+import { Link } from "@/components/ui/Link";
 import { PramaanLogo } from "@/components/brand/PramaanLogo";
 import { PramaanMark } from "@/components/brand/PramaanMark";
 import { ButtonLink } from "@/components/ui/Button";

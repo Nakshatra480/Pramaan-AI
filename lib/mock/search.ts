@@ -37,7 +37,6 @@ export function matchSettings(query: string): SearchResult[] {
 }
 
 /** Global search over the demo store. Async to share the API adapter's signature. */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function searchAll(query: string, _signal?: AbortSignal): Promise<SearchResult[]> {
   return searchAllSync(query);
 }

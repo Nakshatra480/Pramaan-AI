@@ -109,11 +109,20 @@ class HostedProvider:
 
     # --------------------------------------------------------------- request
 
-    async def _request(self, method: str, path: str, *, what: str, json: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        what: str,
+        json: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+        files: dict[str, tuple[str, bytes, str]] | None = None,
+    ) -> dict[str, Any]:
         attempt = 0
         while True:
             try:
-                r = await self._client.request(method, path, json=json)
+                r = await self._client.request(method, path, json=json, data=data, files=files)
                 r.raise_for_status()
                 data = r.json()
                 if not isinstance(data, dict):

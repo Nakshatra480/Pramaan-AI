@@ -1,8 +1,6 @@
-"use client";
-
 import { ArrowRight, Check, Download, KeyRound, Monitor, Moon, Sun, Upload } from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link } from "@/components/ui/Link";
+import { useRouter } from "@/lib/navigation";
 import { useRef, useState } from "react";
 import { PramaanLoader } from "@/components/brand/PramaanLoader";
 import { VerificationMark } from "@/components/animations/VerificationMark";

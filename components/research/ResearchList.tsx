@@ -1,7 +1,5 @@
-"use client";
-
 import { AlertTriangle, FolderClosed } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@/components/ui/Link";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/utils/cn";
 import { formatRelative } from "@/lib/utils/format";

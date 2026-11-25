@@ -1,5 +1,3 @@
-"use client";
-
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { services } from "@/lib/services";
 import type { User } from "@/types";

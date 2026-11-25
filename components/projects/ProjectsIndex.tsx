@@ -1,5 +1,3 @@
-"use client";
-
 import { motion } from "framer-motion";
 import { Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";

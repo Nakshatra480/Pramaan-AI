@@ -1,8 +1,6 @@
-"use client";
-
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, BookOpen, CornerDownLeft, FileText, FolderClosed, FolderPlus, History, Moon, Plus, Quote, Search, Settings, Upload } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePreferences } from "@/components/providers/PreferencesProvider";
 import { Portal } from "@/components/ui/Portal";

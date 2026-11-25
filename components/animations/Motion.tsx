@@ -1,5 +1,3 @@
-"use client";
-
 import { motion, type HTMLMotionProps } from "framer-motion";
 import { Children, type ReactNode } from "react";
 import { ease, spring } from "@/lib/motion";

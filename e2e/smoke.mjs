@@ -3,7 +3,7 @@
  *
  *   BASE_URL=http://localhost:3000 node e2e/smoke.mjs
  *
- * Works against a demo build (NEXT_PUBLIC_DATA_SOURCE=mock — no backend or secrets needed, used in CI).
+ * Works against a demo build (VITE_DATA_SOURCE=mock — no backend or secrets needed, used in CI).
  * Set PW_CHANNEL=chrome to use a locally installed Chrome instead of Playwright's Chromium.
  */
 import { chromium } from "playwright-core";
@@ -54,6 +54,7 @@ await test("security headers are sent (M-11)", async (page) => {
 
 await test("pricing does not sell plans that can't be bought (H-05)", async (page) => {
   await page.goto(`${BASE}/pricing`);
+  await page.getByText("Coming soon").first().waitFor(); // client-rendered: wait for the page, not just the HTML
   expect((await page.getByText("Coming soon").count()) >= 3, "paid plans marked Coming soon");
   expect((await page.getByRole("link", { name: /Choose (Personal|Pro|Team)/ }).count()) === 0, "no Choose <paid plan> links");
 });
@@ -65,6 +66,7 @@ await test("privacy notice exists and is linked from sign-up (L-05); /about is g
   expect(await page.getByRole("heading", { level: 1, name: /How Pramaan handles your data/ }).isVisible(), "privacy heading");
   const about = await page.goto(`${BASE}/about`);
   expect(about.status() === 404, `/about should 404, got ${about.status()}`);
+  await page.getByText("There's no evidence of this page.").waitFor({ timeout: 10000 });
 });
 
 await test("sign-up shows styled field errors, not browser bubbles (L-04)", async (page) => {
@@ -154,6 +156,81 @@ await test("no custom keyboard shortcuts remain", async (page) => {
   expect((await page.getByRole("dialog").count()) === 0, "no dialog opened by a shortcut");
   expect(page.url() === url, "no navigation from a shortcut");
   expect((await page.getByText("Keyboard shortcuts").count()) === 0, "no shortcuts entry");
+});
+
+/** Stand-ins for the browser speech engines (headless Chrome has no voices or microphone). */
+const fakeSpeech = () => {
+  window.__spoken = [];
+  const synth = {
+    getVoices: () => [{ name: "Test Voice", lang: "en-US", voiceURI: "test", localService: true }],
+    addEventListener() {},
+    removeEventListener() {},
+    speak(u) {
+      window.__spoken.push(u.text);
+      this.u = u;
+      this.t = setTimeout(() => u.onend?.(), 80);
+    },
+    cancel() {
+      clearTimeout(this.t);
+      this.u?.onerror?.({ error: "interrupted" });
+      this.u = null;
+    },
+  };
+  Object.defineProperty(window, "speechSynthesis", { value: synth });
+  window.SpeechSynthesisUtterance = function (text) {
+    this.text = text;
+  };
+  const Recognition = class {
+    start() {
+      setTimeout(() => {
+        this.onstart?.();
+        setTimeout(() => this.onresult?.({ results: [{ 0: { transcript: "how do heat pumps perform in cold climates" }, isFinal: true }] }), 150);
+      }, 20);
+    }
+    stop() {
+      setTimeout(() => this.onend?.(), 10);
+    }
+    abort() {
+      this.onend?.();
+    }
+  };
+  window.SpeechRecognition = Recognition;
+  window.webkitSpeechRecognition = Recognition;
+};
+
+await test("voice input dictates into the research composer", async (page, ctx) => {
+  await ctx.addInitScript(fakeSpeech);
+  await signIn(page, "/research/new");
+  await page.waitForURL(/\/research\/new/, { timeout: 15000 });
+  await page.getByLabel("Research question").fill("Context first.");
+  await page.getByRole("button", { name: "Ask with your voice" }).click();
+  await page.getByRole("button", { name: "Stop voice input" }).waitFor();
+  await page.waitForFunction(() => document.querySelector("#composer").value.includes("heat pumps"));
+  expect((await page.getByLabel("Research question").inputValue()) === "Context first. How do heat pumps perform in cold climates", "dictation appended to typed text");
+  await page.getByRole("button", { name: "Stop voice input" }).click();
+  await page.getByRole("button", { name: "Ask with your voice" }).waitFor();
+});
+
+await test("Listen narrates the report beside Share and Export", async (page, ctx) => {
+  await ctx.addInitScript(fakeSpeech);
+  await signIn(page, "/research/r-glp1-cardio");
+  const listen = page.getByRole("button", { name: /Listen to this report/ });
+  await listen.waitFor({ timeout: 15000 });
+  const tops = await page.evaluate(() => ["Share", "Export", "Research again"].map((n) => document.querySelector(`[aria-label="${n}"]`).getBoundingClientRect().top));
+  const listenTop = (await listen.boundingBox()).y;
+  expect(tops.every((t) => Math.abs(t - listenTop) < 6), "Listen sits on the Share / Export / Research again row");
+  await listen.click();
+  await page.getByRole("region", { name: "Report narration" }).waitFor();
+  await page.waitForFunction(() => window.__spoken.length >= 3);
+  const spoken = await page.evaluate(() => window.__spoken);
+  expect(spoken[0].startsWith("GLP-1"), "starts with the report title");
+  expect(!spoken.some((t) => /\[\d+\]/.test(t)), "citation markers are not read aloud");
+  await page.getByRole("button", { name: "Pause narration" }).click();
+  const n = await page.evaluate(() => window.__spoken.length);
+  await page.waitForTimeout(400);
+  expect(n === (await page.evaluate(() => window.__spoken.length)), "pause stops speech");
+  await page.getByRole("button", { name: "Stop narration" }).click();
+  expect((await page.getByRole("region", { name: "Report narration" }).count()) === 0, "player closes");
 });
 
 await browser.close();

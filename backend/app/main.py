@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import activity, health, library, projects, research, search, sharing, sources, users
+from app.api.routes import activity, health, library, projects, research, search, sharing, sources, speech, users
 from app.core.config import get_settings
 from app.core.exceptions import install_exception_handlers
 from app.core.logging import configure_logging
@@ -65,7 +65,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     api = settings.api_prefix
-    for r in (users.router, projects.router, activity.router, library.router, research.router, sources.router, sharing.router, search.router):
+    for r in (users.router, projects.router, activity.router, library.router, research.router, sources.router, sharing.router, search.router, speech.router):
         app.include_router(r, prefix=api)
     return app
 

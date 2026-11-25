@@ -1,9 +1,7 @@
-"use client";
-
 import { motion } from "framer-motion";
 import { ArrowRight, Menu as MenuIcon } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link } from "@/components/ui/Link";
+import { usePathname } from "@/lib/navigation";
 import { useEffect, useState } from "react";
 import { PramaanLogo } from "@/components/brand/PramaanLogo";
 import { useAuth } from "@/components/providers/AuthProvider";

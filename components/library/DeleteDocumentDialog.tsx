@@ -1,5 +1,3 @@
-"use client";
-
 import { useState } from "react";
 import { useToast } from "@/components/providers/ToastProvider";
 import { Button } from "@/components/ui/Button";
@@ -11,7 +9,7 @@ import type { LibraryDocument } from "@/types";
  * Confirms before permanently deleting a library document (audit M-13).
  * `beforeDelete` runs first — e.g. navigate away from the document's page so it doesn't refetch a deleted record (L-13).
  */
-export function DeleteDocumentDialog({ doc, onClose, beforeDelete }: { doc: LibraryDocument | null; onClose: () => void; beforeDelete?: () => void }) {
+export function DeleteDocumentDialog({ doc, onClose, beforeDelete }: { doc: LibraryDocument | null; onClose: () => void; beforeDelete?: () => void | Promise<void> }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const used = doc?.projectIds?.length ?? 0;
@@ -37,7 +35,7 @@ export function DeleteDocumentDialog({ doc, onClose, beforeDelete }: { doc: Libr
             onClick={async () => {
               if (!doc) return;
               setBusy(true);
-              beforeDelete?.();
+              await beforeDelete?.(); // e.g. leave the document's page first (audit L-13)
               try {
                 await services.library.remove(doc.id);
                 toast({ title: "Document deleted." });

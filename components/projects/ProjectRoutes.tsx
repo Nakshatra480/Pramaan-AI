@@ -1,7 +1,5 @@
-"use client";
-
 import { AlertTriangle } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation";
 import { useState } from "react";
 import { LibraryBrowser } from "@/components/library/LibraryBrowser";
 import { useAuth } from "@/components/providers/AuthProvider";

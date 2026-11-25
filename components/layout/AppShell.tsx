@@ -1,5 +1,3 @@
-"use client";
-
 import type { ReactNode } from "react";
 import { CreateProjectModal } from "@/components/projects/CreateProjectModal";
 import { cn } from "@/lib/utils/cn";

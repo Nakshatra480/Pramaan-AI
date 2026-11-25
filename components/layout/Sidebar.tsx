@@ -1,9 +1,7 @@
-"use client";
-
 import { AnimatePresence, motion } from "framer-motion";
 import { PanelLeftClose, PanelLeftOpen, Plus, Settings } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link } from "@/components/ui/Link";
+import { usePathname } from "@/lib/navigation";
 import { PramaanLogo } from "@/components/brand/PramaanLogo";
 import { PramaanMark } from "@/components/brand/PramaanMark";
 import { Tooltip } from "@/components/ui/Tooltip";

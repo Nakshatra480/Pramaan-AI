@@ -120,7 +120,7 @@ export function Manuscript({ className, title = "Field notes" }: { className?: s
   return (
     <svg viewBox="0 0 200 260" className={className} fill="none">
       <rect x="0.5" y="0.5" width="199" height="259" rx="3" fill="#FBF6E8" stroke={LINE} />
-      <text x="20" y="34" fontFamily="var(--font-instrument-serif), serif" fontStyle="italic" fontSize="16" fill={MUTED}>
+      <text x="20" y="34" fontFamily="var(--font-serif)" fontStyle="italic" fontSize="16" fill={MUTED}>
         {title}
       </text>
       {[...Array(15)].map((_, i) => (

@@ -13,11 +13,8 @@
 # testing
 /coverage
 
-# next.js
-/.next/
-/out/
-
-# production
+# production build
+/dist
 /build
 
 # misc
@@ -39,7 +36,6 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts
 
 # backend
 backend/.venv/
@@ -54,6 +50,6 @@ firebase-debug.log
 # Supabase CLI local cache
 .temp/
 
-# AI-assistant instruction files (next dev regenerates AGENTS.md) — kept out of the repo
+# AI-assistant instruction files — kept out of the repo
 AGENTS.md
 CLAUDE.md

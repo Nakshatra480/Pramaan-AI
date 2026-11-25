@@ -1,9 +1,7 @@
-"use client";
-
 import { motion } from "framer-motion";
 import { ChevronLeft, Download, FolderPlus, RotateCcw, Search, Trash2 } from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link } from "@/components/ui/Link";
+import { useRouter } from "@/lib/navigation";
 import { useState } from "react";
 import { PramaanLoader } from "@/components/brand/PramaanLoader";
 import { VerificationMark } from "@/components/animations/VerificationMark";

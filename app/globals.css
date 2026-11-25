@@ -138,8 +138,8 @@
   --color-stone: var(--brand-stone);
   --color-forest: var(--brand-forest);
 
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-serif: var(--font-instrument-serif), "Iowan Old Style", Georgia, serif;
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
 
   --radius-xs: 6px;
   --radius-sm: 8px;

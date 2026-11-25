@@ -1,7 +1,5 @@
-"use client";
-
 import { Bell, FileCheck2 } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@/components/ui/Link";
 import { useState } from "react";
 import { VerificationMark } from "@/components/animations/VerificationMark";
 import { usePreferences } from "@/components/providers/PreferencesProvider";

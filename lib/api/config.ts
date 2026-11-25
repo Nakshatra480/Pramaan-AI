@@ -1,6 +1,6 @@
 import { isFirebaseConfigured } from "@/lib/firebase/config";
 
-export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+export const API_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
 /**
  * "api"  → Firebase Auth + FastAPI backend.
@@ -8,4 +8,4 @@ export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, ""
  * Defaults to "api" when both the backend URL and Firebase config are present.
  */
 export const DATA_SOURCE: "api" | "mock" =
-  process.env.NEXT_PUBLIC_DATA_SOURCE === "mock" ? "mock" : process.env.NEXT_PUBLIC_DATA_SOURCE === "api" || (API_URL && isFirebaseConfigured) ? "api" : "mock";
+  import.meta.env.VITE_DATA_SOURCE === "mock" ? "mock" : import.meta.env.VITE_DATA_SOURCE === "api" || (API_URL && isFirebaseConfigured) ? "api" : "mock";

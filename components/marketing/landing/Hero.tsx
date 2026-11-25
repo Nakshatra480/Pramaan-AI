@@ -1,8 +1,6 @@
-"use client";
-
 import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
 import { ArrowRight, Play } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@/components/ui/Link";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ease } from "@/lib/motion";
 import { ResearchMarquee } from "./Story";
@@ -76,7 +74,6 @@ function HeroBackdrop() {
     <motion.div aria-hidden style={{ y }} className="absolute inset-x-0 bottom-0 top-[58%] sm:top-[45%] lg:top-0 pointer-events-none">
       <motion.div style={{ scale }} className="absolute inset-0 origin-[75%_40%]">
         <motion.div initial={{ opacity: 0, scale: 1.06 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 1.8, ease: ease.out }} className="absolute inset-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/images/landing/hero-research.webp"
             alt=""

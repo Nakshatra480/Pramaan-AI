@@ -1,7 +1,5 @@
-"use client";
-
 import { ClipboardCopy, Download, FileCode2, FileText, FileType2, FolderInput, Link2, MessageSquarePlus, MoreHorizontal, Pencil, Printer, RotateCcw, Share2, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation";
 import { useState } from "react";
 import { VerificationMark } from "@/components/animations/VerificationMark";
 import { useToast } from "@/components/providers/ToastProvider";
@@ -14,6 +12,7 @@ import { useResource } from "@/lib/hooks/use-resource";
 import { services } from "@/lib/services";
 import { cn } from "@/lib/utils/cn";
 import { downloadFile, researchToMarkdown, researchToPlainText, slugify } from "@/lib/utils/export";
+import { ListenButton } from "./Narration";
 import { useResearch } from "./ResearchContext";
 import { ShareDialog } from "./ShareDialog";
 
@@ -58,10 +57,13 @@ export function ResearchActions({ onFollowUp }: { onFollowUp: () => void }) {
     router.push(`/research/new?${q.toString()}`);
   };
 
+  // Labels collapse to icons by the row's own width (container query), so Share · Export · Listen ·
+  // Research again stay on one line in narrow layouts too (phones, or a laptop with the sources panel open).
   return (
-    <div className="flex flex-wrap items-center gap-2" data-print-hide>
-      <Button variant="secondary" size="sm" leading={<Share2 className="size-4" />} onClick={() => setShareOpen(true)}>
-        Share
+    <div className="@container" data-print-hide>
+      <div className="flex flex-wrap items-center gap-1.5 @sm:gap-2">
+      <Button variant="secondary" size="sm" leading={<Share2 className="size-4" />} onClick={() => setShareOpen(true)} aria-label="Share" title="Share" className="@max-[22rem]:px-2">
+        <span className="@max-[22rem]:sr-only">Share</span>
       </Button>
       <Menu
         label="Export"
@@ -69,8 +71,8 @@ export function ResearchActions({ onFollowUp }: { onFollowUp: () => void }) {
         open={exportOpen}
         onOpenChange={setExportOpen}
         trigger={
-          <Button variant="secondary" size="sm" leading={<Download className="size-4" />}>
-            Export
+          <Button variant="secondary" size="sm" leading={<Download className="size-4" />} aria-label="Export" title="Export" className="@max-[22rem]:px-2">
+            <span className="@max-[22rem]:sr-only">Export</span>
           </Button>
         }
         items={[
@@ -91,10 +93,12 @@ export function ResearchActions({ onFollowUp }: { onFollowUp: () => void }) {
           { label: "Copy Markdown", icon: <FileText />, onSelect: () => copy(md(), "Markdown copied.") },
         ]}
       />
-      <Button variant="ghost" size="sm" leading={<RotateCcw className="size-4" />} onClick={researchAgain} className="hidden sm:inline-flex">
-        Research again
+      <ListenButton />
+      <Button variant="ghost" size="sm" leading={<RotateCcw className="size-4" />} onClick={researchAgain} aria-label="Research again" title="Research again" className="@max-[34rem]:px-2">
+        <span className="@max-[34rem]:sr-only">Research again</span>
       </Button>
-      <Button variant="ghost" size="sm" leading={<MessageSquarePlus className="size-4" />} onClick={onFollowUp} className="hidden sm:inline-flex">
+      {/* Also in "More actions" and the follow-up box below the report; shown here when there's room. */}
+      <Button variant="ghost" size="sm" leading={<MessageSquarePlus className="size-4" />} onClick={onFollowUp} className="@max-[44rem]:hidden">
         Follow-up
       </Button>
       <Menu
@@ -116,6 +120,7 @@ export function ResearchActions({ onFollowUp }: { onFollowUp: () => void }) {
           { label: "Delete research", icon: <Trash2 />, tone: "danger", onSelect: () => setDeleteOpen(true) },
         ]}
       />
+      </div>
 
       <ShareDialog research={research} open={shareOpen} onClose={() => setShareOpen(false)} />
       <MoveToProjectDialog open={moveOpen} onClose={() => setMoveOpen(false)} />
@@ -151,7 +156,7 @@ export function ResearchActions({ onFollowUp }: { onFollowUp: () => void }) {
             <Button
               variant="danger"
               onClick={async () => {
-                router.replace("/history"); // leave first so this page doesn't refetch a deleted record (audit L-13)
+                await router.replace("/history"); // leave first so this page doesn't refetch a deleted record (audit L-13)
                 try {
                   await services.research.remove(research.id);
                   toast({ title: "Research deleted." });

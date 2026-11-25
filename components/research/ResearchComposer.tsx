@@ -1,8 +1,6 @@
-"use client";
-
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUp, Check, ChevronDown, FolderClosed, Gauge, Layers, Paperclip, X } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation";
 import { useEffect, useRef, useState } from "react";
 import { usePreferences } from "@/components/providers/PreferencesProvider";
 import { useToast } from "@/components/providers/ToastProvider";
@@ -13,9 +11,11 @@ import { useResource } from "@/lib/hooks/use-resource";
 import { track } from "@/lib/firebase/analytics";
 import { services } from "@/lib/services";
 import { cn } from "@/lib/utils/cn";
+import { appendDictation, useVoiceInput } from "@/lib/speech/recognition";
 import { rejectionMessage, splitUploads, UPLOAD_ACCEPT } from "@/lib/utils/uploads";
 import type { ResearchMode, SourceChannel } from "@/types";
 import { CHANNELS, MODES } from "./research-options";
+import { VoiceInputButton } from "./VoiceInputButton";
 
 interface ResearchComposerProps {
   placeholder?: string;
@@ -78,6 +78,22 @@ export function ResearchComposer({
   const { data: projects } = useResource(() => services.projects.list(), []);
   const project = projects?.find((p) => p.id === projectId);
 
+  // Voice input: dictation is appended to whatever was typed before the mic was pressed.
+  const dictationBase = useRef("");
+  const voice = useVoiceInput({
+    transcribe: services.speech.transcribe,
+    onTranscript: (text) => {
+      setQuery(appendDictation(dictationBase.current, text));
+      setError(null);
+    },
+    onError: (message) => toast({ title: "Voice input", description: message, tone: "error" }),
+  });
+  const toggleVoice = () => {
+    if (voice.active) return voice.stop();
+    dictationBase.current = query;
+    voice.start();
+  };
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -136,6 +152,7 @@ export function ResearchComposer({
   const toggleChannel = (c: SourceChannel) => setChannels((cs) => (cs.includes(c) ? cs.filter((x) => x !== c) : [...cs, c]));
 
   const submit = async () => {
+    if (voice.active) voice.stop();
     const q = query.trim();
     if (q.length < 8) {
       setError("Ask a complete question so Pramaan can plan the research.");
@@ -199,6 +216,7 @@ export function ResearchComposer({
           autoFocus={autoFocus}
           rows={hero ? 2 : 1}
           onChange={(e) => {
+            if (voice.active) voice.stop(); // typing takes over from dictation
             setQuery(e.target.value);
             if (error) setError(null);
           }}
@@ -208,7 +226,7 @@ export function ResearchComposer({
               void submit();
             }
           }}
-          placeholder={placeholder}
+          placeholder={voice.state === "listening" ? "Listening… ask your question out loud" : voice.state === "transcribing" ? "Transcribing…" : placeholder}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? "composer-error" : nearLimit ? "composer-count" : undefined}
           className={cn(
@@ -370,9 +388,13 @@ export function ResearchComposer({
             </ControlButton>
           </div>
 
+          {voice.supported && <VoiceInputButton state={voice.state} onClick={toggleVoice} disabled={submitting} size={hero ? "hero" : "default"} />}
+          <span className="sr-only" role="status" aria-live="polite">
+            {voice.state === "listening" ? "Listening. Speak your question, then press stop." : voice.state === "transcribing" ? "Transcribing your question." : ""}
+          </span>
           <button
             type="submit"
-            disabled={submitting || !query.trim() || pending || overLimit}
+            disabled={submitting || !query.trim() || pending || overLimit || voice.state === "transcribing"}
             className={cn(
               "inline-flex items-center justify-center gap-2 rounded-xl bg-ink text-bg font-medium transition-[background-color,opacity,transform] active:scale-[0.97]",
               "disabled:opacity-30 hover:bg-ink-2",

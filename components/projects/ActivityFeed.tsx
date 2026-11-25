@@ -1,7 +1,5 @@
-"use client";
-
 import { FilePlus2, FolderPlus, ListChecks, Share2, UserPlus } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@/components/ui/Link";
 import { VerificationMark } from "@/components/animations/VerificationMark";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { formatRelative } from "@/lib/utils/format";

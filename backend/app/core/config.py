@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     groq_base_url: str = "https://api.groq.com/openai/v1"
     groq_connect_timeout_s: float = 10.0
     groq_timeout_s: float = 60.0
+    # Voice input fallback (browsers without built-in speech recognition): Groq Whisper.
+    groq_stt_model: str = "whisper-large-v3-turbo"
+    max_audio_bytes: int = 10 * 1024 * 1024  # ~10 min of Opus; the composer stops recording after 2 min
+    speech_per_minute: int = 12
 
     # Embeddings — OpenRouter in production. The dimension is fixed by the schema (vector(768)):
     # the model must accept `dimensions=768`. Changing the model requires re-indexing every document.

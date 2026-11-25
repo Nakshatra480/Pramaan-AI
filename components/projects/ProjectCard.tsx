@@ -1,7 +1,5 @@
-"use client";
-
 import { FileText, Search } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@/components/ui/Link";
 import { AvatarStack } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";

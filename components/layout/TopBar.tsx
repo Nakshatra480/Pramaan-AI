@@ -1,8 +1,6 @@
-"use client";
-
 import { Menu as MenuIcon, Search } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link } from "@/components/ui/Link";
+import { usePathname } from "@/lib/navigation";
 import { PramaanMark } from "@/components/brand/PramaanMark";
 import { IconButton } from "@/components/ui/IconButton";
 import { HelpMenu } from "./HelpMenu";

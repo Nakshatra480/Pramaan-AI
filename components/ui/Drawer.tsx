@@ -1,5 +1,3 @@
-"use client";
-
 import { AnimatePresence, motion, type PanInfo } from "framer-motion";
 import { X } from "lucide-react";
 import { useId, useRef, type ReactNode } from "react";

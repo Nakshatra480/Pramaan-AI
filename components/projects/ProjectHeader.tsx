@@ -1,8 +1,6 @@
-"use client";
-
 import { ChevronLeft } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link } from "@/components/ui/Link";
+import { usePathname } from "@/lib/navigation";
 import { AvatarStack } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";

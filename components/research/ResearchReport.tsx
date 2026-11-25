@@ -1,14 +1,13 @@
-"use client";
-
 import { motion } from "framer-motion";
 import { FolderClosed, Info } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@/components/ui/Link";
 import type { ReactNode } from "react";
 import { ClaimStatusBadge, CLAIM_STATUS } from "@/components/ui/StatusIndicator";
 import { ease } from "@/lib/motion";
 import { cn } from "@/lib/utils/cn";
 import { formatDate } from "@/lib/utils/format";
 import type { ClaimStatus, Project } from "@/types";
+import { ReadingIndicator, useNarratingSection } from "./Narration";
 import { MODES } from "./research-options";
 import { useResearch } from "./ResearchContext";
 import { RichText } from "./RichText";
@@ -16,6 +15,8 @@ import { SourceFavicon, SourceMetaLine } from "./SourceMeta";
 
 /** Sections reveal progressively, like a document being set — not character streaming (PRD §28). */
 function Section({ id, title, children, index, className }: { id: string; title: string; children: ReactNode; index: number; className?: string }) {
+  const { research } = useResearch();
+  const reading = useNarratingSection(research.id, id);
   return (
     <motion.section
       id={id}
@@ -27,6 +28,7 @@ function Section({ id, title, children, index, className }: { id: string; title:
     >
       <h2 id={`${id}-h`} className="font-display text-[28px] sm:text-[30px] text-ink mb-5">
         {title}
+        {reading && <ReadingIndicator paused={reading === "paused"} />}
       </h2>
       {children}
     </motion.section>

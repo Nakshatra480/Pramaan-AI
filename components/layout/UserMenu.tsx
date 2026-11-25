@@ -1,7 +1,5 @@
-"use client";
-
 import { ChevronsUpDown, CreditCard, LogOut, Moon, Sun, User } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { usePreferences } from "@/components/providers/PreferencesProvider";
 import { Avatar } from "@/components/ui/Avatar";

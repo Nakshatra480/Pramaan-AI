@@ -1,5 +1,3 @@
-"use client";
-
 import { useRef, type KeyboardEvent, type ReactElement, type ReactNode, type Ref } from "react";
 import { cn } from "@/lib/utils/cn";
 import { Popover, type Placement } from "./Popover";

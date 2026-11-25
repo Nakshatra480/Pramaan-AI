@@ -1,9 +1,7 @@
-"use client";
-
 import { motion } from "framer-motion";
 import { Bell, Brain, CreditCard, LayoutGrid, Palette, Search, Shield, User } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link } from "@/components/ui/Link";
+import { usePathname } from "@/lib/navigation";
 import { spring } from "@/lib/motion";
 import { cn } from "@/lib/utils/cn";
 

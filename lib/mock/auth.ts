@@ -78,12 +78,10 @@ export const authService = {
   },
   async retry() {},
   takeRedirectError: (): string | null => null,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async savePreferences(_preferences: Record<string, unknown>) {},
   /** Demo mode keeps preferences in this browser only. */
   storedPreferences: (): Record<string, unknown> | null => null,
   /** Demo mode: clears the demo store and signs out. */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async deleteAccount(_password?: string) {
     await latency(500);
     db.reset();
@@ -133,7 +131,6 @@ export const authService = {
     await latency(700);
     return email;
   },
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async resetPassword(password: string, _oobCode?: string | null) {
     await latency(700);
     if (password.length < 8) throw new AuthError("auth/weak-password", "Use at least 8 characters for your password.");

@@ -68,8 +68,8 @@ async function loadProfile(fb: FirebaseUser | null) {
     // Firebase sign-in succeeded but the Pramaan profile bootstrap (GET /me) failed.
     const friendly = e instanceof ApiError && e.code === "NETWORK" ? "Pramaan can't be reached right now." : "We couldn't load your profile.";
     const detail = e instanceof ApiError ? `${e.code}${e.status ? ` (HTTP ${e.status})` : ""}${e.requestId ? ` · request ${e.requestId}` : ""}` : (e as Error).message;
-    if (process.env.NODE_ENV !== "production") console.warn(`[pramaan/auth] Firebase user ${fb.uid} (${fb.providerData.map((p) => p.providerId).join(",")}) signed in, but GET /me failed: ${detail}`);
-    emit(null, process.env.NODE_ENV !== "production" ? `${friendly} [dev: ${detail} — ${API_URL}]` : friendly);
+    if (!import.meta.env.PROD) console.warn(`[pramaan/auth] Firebase user ${fb.uid} (${fb.providerData.map((p) => p.providerId).join(",")}) signed in, but GET /me failed: ${detail}`);
+    emit(null, !import.meta.env.PROD ? `${friendly} [dev: ${detail} — ${API_URL}]` : friendly);
   }
 }
 

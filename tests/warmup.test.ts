@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 async function load() {
   vi.resetModules();
-  vi.stubEnv("NEXT_PUBLIC_DATA_SOURCE", "api");
-  vi.stubEnv("NEXT_PUBLIC_API_URL", "https://api.example");
+  vi.stubEnv("VITE_DATA_SOURCE", "api");
+  vi.stubEnv("VITE_API_URL", "https://api.example");
   vi.stubGlobal("window", {});
   return import("@/lib/api/warmup");
 }
@@ -47,7 +47,7 @@ describe("prewarmBackend", () => {
 
   it("does nothing in demo mode", async () => {
     vi.resetModules();
-    vi.stubEnv("NEXT_PUBLIC_DATA_SOURCE", "mock");
+    vi.stubEnv("VITE_DATA_SOURCE", "mock");
     const w = await import("@/lib/api/warmup");
     const f = vi.fn();
     await w.prewarmBackend(f as unknown as typeof fetch);

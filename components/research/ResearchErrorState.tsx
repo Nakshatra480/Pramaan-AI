@@ -1,5 +1,3 @@
-"use client";
-
 import { AlertTriangle, Clock, SearchX, ServerCrash } from "lucide-react";
 import { useState } from "react";
 import { Button, ButtonLink } from "@/components/ui/Button";

@@ -3,7 +3,7 @@ import { PramaanMark } from "./PramaanMark";
 
 /**
  * Branded loading indicator: the Pramaan mark breathing gently inside a slowly sweeping sage arc,
- * over a soft halo. Pure CSS (works in server components; stops under reduced motion — both the OS
+ * over a soft halo. Pure CSS (no JS animation loop; stops under reduced motion — both the OS
  * setting and the in-app one, via the global reduced-motion rule).
  */
 export function PramaanLoader({ size = 72, label = "Loading", className }: { size?: number; label?: string; className?: string }) {

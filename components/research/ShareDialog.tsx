@@ -1,5 +1,3 @@
-"use client";
-
 import { Check, Copy, ExternalLink, Globe2, Lock } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/components/providers/ToastProvider";

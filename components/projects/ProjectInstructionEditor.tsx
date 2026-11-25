@@ -1,5 +1,3 @@
-"use client";
-
 import { AnimatePresence, motion } from "framer-motion";
 import { Lightbulb, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";

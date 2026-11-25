@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { backendState, prewarmBackend } from "@/lib/api/warmup";
 

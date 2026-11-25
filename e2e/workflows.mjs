@@ -2,7 +2,7 @@
  * Signed-in workflow suite against the real backend (audit C-03 / M-14).
  *
  * Needs: Firebase Auth emulator (npm run emulators), the backend with FIREBASE_AUTH_EMULATOR_HOST
- * set, and the frontend in API mode with NEXT_PUBLIC_FIREBASE_USE_EMULATOR=true. Creates its own
+ * set, and the frontend in API mode with VITE_FIREBASE_USE_EMULATOR=true. Creates its own
  * throwaway emulator accounts — never point it at production.
  *
  *   BASE_URL=http://localhost:3000 API_URL=http://localhost:8000 node e2e/workflows.mjs [--real-research]

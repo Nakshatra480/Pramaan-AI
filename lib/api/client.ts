@@ -92,7 +92,7 @@ async function send(path: string, opts: RequestOptions, forceRefresh: boolean): 
     });
   } catch (e) {
     if ((e as Error).name === "AbortError") throw e;
-    if (process.env.NODE_ENV !== "production") {
+    if (!import.meta.env.PROD) {
       // Dev diagnostic: never includes tokens — only the target and the browser's reason.
       console.warn(`[pramaan/api] ${opts.method ?? "GET"} ${API_URL}/api/v1${path} failed before a response: ${(e as Error).message}. Is the backend running and does CORS_ORIGINS include ${typeof window !== "undefined" ? window.location.origin : "this origin"}?`);
     }

@@ -1,5 +1,3 @@
-"use client";
-
 import { createContext, useContext, type ReactNode } from "react";
 import { PageTransition } from "@/components/animations/PageTransition";
 import { ButtonLink } from "@/components/ui/Button";

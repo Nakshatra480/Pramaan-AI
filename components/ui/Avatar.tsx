@@ -12,7 +12,6 @@ export function Avatar({ initials, src, size = 32, className, label }: { initial
       role={label ? "img" : undefined}
     >
       {src ? (
-        // eslint-disable-next-line @next/next/no-img-element
         <img src={src} alt="" className="size-full object-cover" />
       ) : (
         initials

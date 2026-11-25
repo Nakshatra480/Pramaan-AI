@@ -1,7 +1,5 @@
-"use client";
-
 import { BookOpen, CircleHelp, LifeBuoy, ShieldCheck } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation";
 import { useToast } from "@/components/providers/ToastProvider";
 import { IconButton } from "@/components/ui/IconButton";
 import { Menu } from "@/components/ui/Menu";

@@ -1,8 +1,6 @@
-"use client";
-
 import { AnimatePresence, motion } from "framer-motion";
 import { FolderPlus, LayoutGrid, List, Plus, Search, Upload, X } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@/components/ui/Link";
 import { useMemo, useState } from "react";
 import { useToast } from "@/components/providers/ToastProvider";
 import { Button } from "@/components/ui/Button";

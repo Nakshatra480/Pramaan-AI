@@ -1,8 +1,6 @@
-"use client";
-
 import { Plus } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link } from "@/components/ui/Link";
+import { usePathname } from "@/lib/navigation";
 import { Drawer } from "@/components/ui/Drawer";
 import { cn } from "@/lib/utils/cn";
 import { NAV } from "./nav";

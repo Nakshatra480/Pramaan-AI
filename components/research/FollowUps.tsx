@@ -1,5 +1,3 @@
-"use client";
-
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, ArrowUp, CornerDownRight, RotateCcw } from "lucide-react";
 import { forwardRef, useEffect, useState, useSyncExternalStore } from "react";

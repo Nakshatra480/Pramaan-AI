@@ -1,7 +1,5 @@
-"use client";
-
 import { motion } from "framer-motion";
-import Link from "next/link";
+import { Link } from "@/components/ui/Link";
 import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { spring } from "@/lib/motion";
 import { cn } from "@/lib/utils/cn";

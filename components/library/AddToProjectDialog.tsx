@@ -1,5 +1,3 @@
-"use client";
-
 import { VerificationMark } from "@/components/animations/VerificationMark";
 import { ProjectIcon } from "@/components/projects/ProjectIcon";
 import { useToast } from "@/components/providers/ToastProvider";

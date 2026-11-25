@@ -1,13 +1,21 @@
 /**
- * Security headers for every page (audit M-11). No nonces, so pages stay statically renderable
- * (see node_modules/next/dist/docs/01-app/02-guides/content-security-policy.md, "Without Nonces").
- * Origins are derived from the configured environment: the Pramaan API, Firebase Auth / App Check / Analytics.
+ * Security headers for every page (audit M-11).
+ *
+ * The app is a static single-page build, so the policy is split in two:
+ * - the Content-Security-Policy is injected into index.html as a <meta> tag at build time (vite.config.ts),
+ *   because its origins come from the build environment: the Pramaan API, Firebase Auth / App Check / Analytics;
+ * - the fixed headers below (including `frame-ancestors`, which a <meta> policy cannot set) are served by the
+ *   host from vercel.json. tests/security-headers.test.ts keeps vercel.json in sync with `staticHeaders()`.
  */
 export interface HeaderEnv {
   apiUrl?: string;
   firebaseAuthDomain?: string;
   useEmulator?: boolean;
   dev?: boolean;
+  /** 'sha256-…' sources for the inline scripts in index.html (production builds allow only these). */
+  scriptHashes?: string[];
+  /** Omit directives a <meta> policy ignores (frame-ancestors). */
+  meta?: boolean;
 }
 
 function origin(url?: string): string | null {
@@ -25,8 +33,8 @@ export function contentSecurityPolicy(env: HeaderEnv): string {
   const google = ["https://apis.google.com", "https://www.google.com", "https://www.gstatic.com", "https://www.googletagmanager.com"];
   const directives: Record<string, string[]> = {
     "default-src": ["'self'"],
-    // Next.js inline bootstrap scripts need 'unsafe-inline' without nonces; dev tooling needs eval.
-    "script-src": ["'self'", "'unsafe-inline'", ...(env.dev ? ["'unsafe-eval'"] : []), ...google],
+    // Production allows only hashed inline scripts (the theme bootstrap); the dev server's HMR preamble needs inline + eval.
+    "script-src": ["'self'", ...(env.dev ? ["'unsafe-inline'", "'unsafe-eval'"] : (env.scriptHashes ?? []).map((h) => `'${h}'`)), ...google],
     "style-src": ["'self'", "'unsafe-inline'"],
     "img-src": ["'self'", "data:", "blob:", "https:"], // avatars from sign-in providers
     "font-src": ["'self'", "data:"],
@@ -46,21 +54,34 @@ export function contentSecurityPolicy(env: HeaderEnv): string {
     "object-src": ["'none'"],
     "base-uri": ["'self'"],
     "form-action": ["'self'"],
-    "frame-ancestors": ["'none'"],
+    ...(env.meta ? {} : { "frame-ancestors": ["'none'"] }),
   };
   const parts = Object.entries(directives).map(([k, v]) => `${k} ${[...new Set(v)].join(" ")}`);
   if (!env.dev) parts.push("upgrade-insecure-requests");
   return parts.join("; ");
 }
 
-export function securityHeaders(env: HeaderEnv): { key: string; value: string }[] {
+export interface Header {
+  key: string;
+  value: string;
+}
+
+/** Headers that don't depend on the environment; served for every path (see vercel.json). */
+export function staticHeaders(): Header[] {
   return [
-    { key: "Content-Security-Policy", value: contentSecurityPolicy(env) },
+    // The rest of the policy is in the page's <meta> tag; browsers enforce both.
+    { key: "Content-Security-Policy", value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'" },
     { key: "X-Frame-Options", value: "DENY" },
     { key: "X-Content-Type-Options", value: "nosniff" },
     { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-    { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
+    // The microphone is used by voice input in the research composer (this origin only).
+    { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(), payment=(), usb=()" },
     // Google sign-in uses a popup that must be able to report back to this window.
     { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
   ];
+}
+
+/** Every header a page gets, with the full policy as a single header (for hosts that can set per-environment headers). */
+export function securityHeaders(env: HeaderEnv): Header[] {
+  return [{ key: "Content-Security-Policy", value: contentSecurityPolicy(env) }, ...staticHeaders().filter((h) => h.key !== "Content-Security-Policy")];
 }

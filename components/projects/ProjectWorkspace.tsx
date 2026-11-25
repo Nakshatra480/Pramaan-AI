@@ -1,7 +1,5 @@
-"use client";
-
 import { ArrowRight, FileText } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@/components/ui/Link";
 import { ResearchComposer } from "@/components/research/ResearchComposer";
 import { ResearchRow, ResearchRowSkeleton } from "@/components/research/ResearchList";
 import { EmptyState } from "@/components/ui/EmptyState";

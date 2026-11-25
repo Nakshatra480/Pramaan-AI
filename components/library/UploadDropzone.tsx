@@ -1,5 +1,3 @@
-"use client";
-
 import { motion } from "framer-motion";
 import { Link2, UploadCloud } from "lucide-react";
 import { useRef, useState } from "react";

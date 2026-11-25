@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pramaan AI — Research, with evidence.</title>
+    <meta name="description" content="Ask a question. Pramaan investigates the evidence, verifies important claims, and gives you an answer you can trace back to its sources." />
+    <meta name="application-name" content="Pramaan AI" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#FAF8ED" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121311" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <!-- %CSP% -->
+    <!-- Applies the saved theme and reduced-motion preference before first paint to avoid a flash. -->
+    <script>
+      (function(){try{var p=JSON.parse(localStorage.getItem('pramaan.prefs.v1')||'{}');var t=p.theme||'light';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.theme=d?'dark':'light';if(p.reducedMotion)document.documentElement.dataset.reducedMotion='true';}catch(e){document.documentElement.dataset.theme='light';}})();
+    </script>
+  </head>
+  <body class="min-h-full bg-bg text-ink antialiased">
+    <noscript>Pramaan AI needs JavaScript to run.</noscript>
+    <div id="root"></div>
+    <script type="module" src="/app/main.tsx"></script>
+  </body>
+</html>

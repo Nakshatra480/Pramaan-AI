@@ -1,8 +1,6 @@
-"use client";
-
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, BookMarked, Briefcase, Check, Cpu, FlaskConical, Gavel, GraduationCap, HeartPulse, Landmark, Library, Globe, School, Sparkles } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation";
 import { useEffect, useState } from "react";
 import { PramaanResearchAnimation } from "@/components/animations/PramaanResearchAnimation";
 import { PramaanLogo } from "@/components/brand/PramaanLogo";

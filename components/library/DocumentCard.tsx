@@ -1,9 +1,7 @@
-"use client";
-
 import { AnimatePresence, motion } from "framer-motion";
 import { Eye, FolderPlus, MoreHorizontal, RotateCcw, Search, Trash2 } from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link } from "@/components/ui/Link";
+import { useRouter } from "@/lib/navigation";
 import { useState } from "react";
 import { useToast } from "@/components/providers/ToastProvider";
 import { Button } from "@/components/ui/Button";

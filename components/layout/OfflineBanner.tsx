@@ -1,5 +1,3 @@
-"use client";
-
 import { AnimatePresence, motion } from "framer-motion";
 import { WifiOff } from "lucide-react";
 import { useSyncExternalStore } from "react";

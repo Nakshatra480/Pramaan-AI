@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { RouteObject } from "react-router";
-import { routes } from "@/app/router";
+import { routes } from "@/router";
 import { matchRewrite, sourcePattern } from "@/lib/hosting";
 import { contentSecurityPolicy, staticHeaders } from "@/lib/security/headers";
 

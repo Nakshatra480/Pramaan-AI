@@ -60,6 +60,7 @@ flowchart LR
         GROQ["Groq<br/>openai/gpt-oss-120b<br/>whisper-large-v3-turbo"]
         OR["OpenRouter<br/>768-d embeddings"]
         TAV["Tavily<br/>web search"]
+        WIKI["Wikipedia<br/>MediaWiki API"]
         OA["OpenAlex<br/>academic search"]
     end
 
@@ -95,14 +96,15 @@ flowchart LR
 | Text generation | Groq — `openai/gpt-oss-120b` | Planning, claim extraction, verification, synthesis |
 | Speech-to-text | Groq — `whisper-large-v3-turbo` | Voice input in browsers without built-in recognition |
 | Embeddings | OpenRouter — `nvidia/nemotron-3.5-embed-8b:free`, 768 dimensions | Semantic ranking and retrieval |
-| Search | Tavily (web), OpenAlex (academic) | Source discovery |
+| Search | Tavily (web), Wikipedia (MediaWiki API), OpenAlex (academic) | Source discovery |
+| Page parsing | BeautifulSoup 4 + lxml | Reads result pages, Wikipedia articles and added websites into clean passages |
 | Cache (optional) | Redis (Upstash) | Shared rate limits, search & query-embedding caches, progress pub/sub |
 
 ---
 
 ## 2. The research agents
 
-Each research run executes a **LangGraph state graph**. Every node is a focused agent that reads the shared `ResearchState`, does one job, reports progress, and returns a partial state update. The three discovery agents run **in parallel**.
+Each research run executes a **LangGraph state graph**. Every node is a focused agent that reads the shared `ResearchState`, does one job, reports progress, and returns a partial state update. The four discovery agents run **in parallel**.
 
 ```mermaid
 flowchart TD
@@ -110,14 +112,16 @@ flowchart TD
     QU --> PL["🗺️ Planner — Groq<br/><i>focused sub-queries</i>"]
 
     PL --> WEB["🌐 Web research — Tavily"]
+    PL --> WIK["📖 Wikipedia research — MediaWiki API<br/><i>articles read in full</i>"]
     PL --> ACA["🎓 Academic research — OpenAlex"]
     PL --> KR["📚 Knowledge retrieval — pgvector + full-text<br/><i>your library / project documents</i>"]
 
     WEB --> EV
+    WIK --> EV
     ACA --> EV
     KR --> EV
 
-    EV["🔎 Evidence — OpenRouter embeddings<br/><i>rank verbatim passages, per-source cap</i>"]
+    EV["🔎 Evidence — BeautifulSoup + OpenRouter embeddings<br/><i>read top pages, rank passages breadth-first</i>"]
     EV --> CL["🧩 Claims — Groq<br/><i>atomic claims, each linked to evidence IDs</i>"]
     CL --> VE["✅ Verification — Groq<br/><i>supported · partially · insufficient · contradicted</i>"]
     VE --> SY["✍️ Synthesis — Groq<br/><i>report written only from verified claims</i>"]
@@ -128,7 +132,7 @@ flowchart TD
     classDef search fill:#F4EAD4,stroke:#80570F,color:#191A17
     classDef det fill:#F3F0E2,stroke:#65675E,color:#191A17
     class PL,CL,VE,SY llm
-    class WEB,ACA,KR,EV search
+    class WEB,WIK,ACA,KR,EV search
     class QU,CI det
 ```
 
@@ -136,22 +140,27 @@ flowchart TD
 | --- | --- | --- | --- |
 | **Query understanding** | Question, project, channels | Research scope | — |
 | **Planner** | Question, project instructions, prior project research | 2–5 sub-queries (by mode) | Groq |
-| **Web research** | Sub-queries | Web sources + snippets | Tavily (Redis-cached) |
+| **Web research** | Sub-queries | Web results | Tavily (Redis-cached) |
+| **Wikipedia research** | Question + top sub-queries (reduced to keywords) | Encyclopedia articles, parsed into passages | MediaWiki API + BeautifulSoup (Redis-cached); runs when the **Web** channel is on |
 | **Academic research** | Sub-queries | Papers, authors, abstracts | OpenAlex (Redis-cached) |
 | **Knowledge retrieval** | Question, authorised document IDs | Ranked document chunks with page numbers | pgvector HNSW + Postgres full-text, fused with reciprocal rank fusion |
-| **Evidence** | All sources and chunks | Up to 12 / 24 / 40 verbatim passages (E1…En) | OpenRouter embeddings + keyword overlap |
-| **Claims** | Evidence | Up to 6 / 10 / 16 claims (C1…Cn), each citing evidence IDs | Groq |
-| **Verification** | Claims + their evidence | Status and confidence per claim | Groq |
-| **Synthesis** | Verified claims only | Summary, findings, analysis, limitations — shaped by mode and the user's response-length preference | Groq |
+| **Evidence** | All sources and chunks | Opens the best web results and parses the pages; then picks verbatim passages breadth-first (every relevant source's best passage before any second one) | BeautifulSoup + lxml, OpenRouter embeddings + keyword overlap |
+| **Claims** | Evidence (in batches that fit Groq's per-request budget) | Claims (C1…Cn), each listing every evidence ID that supports it | Groq |
+| **Verification** | Claims + their evidence | Status and confidence per claim; supported claims are then credited to other sources stating the same fact (corroboration) | Groq + deterministic check |
+| **Synthesis** | Verified claims only | Summary, findings, analysis, limitations; verified claims the writer left out go under "Supporting evidence" | Groq |
 | **Citations** | Draft + claims + evidence | Final report with `[n]` markers resolved to stored sources | Deterministic code |
 
-**Research modes** set the breadth of every agent:
+**Page parsing** (`backend/app/services/content/`): every page Pramaan reads — research results, follow-up results, Wikipedia articles, websites added to the library — is fetched SSRF-safely (each redirect hop re-checked) and parsed with BeautifulSoup. Scripts, navigation, cookie banners, share widgets, sidebars, comments, link lists, citation markers, infoboxes and "References / See also" sections are dropped; the article's paragraphs, list items, quotes and table rows become passages of about 420 characters that never span a heading. Pages that can't be read keep their search snippet.
 
-| Mode | Sub-queries | Web results | Papers | Library chunks | Evidence | Claims |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Quick | 2 | 5 | 3 | 6 | 12 | 6 |
-| Standard | 3 | 6 | 5 | 10 | 24 | 10 |
-| Deep | 5 | 8 | 8 | 16 | 40 | 16 |
+**Research modes** set the breadth of every agent. `Cited` is the target number of cited sources in the finished report:
+
+| Mode | Cited sources | Sub-queries | Web / query | Wikipedia | Papers | Pages read | Evidence (max sources) | Claims |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Quick | ~10 | 2 | 7 | 2 | 4 | 8 | 18 (12) | 8 |
+| Standard | ~35 | 4 | 12 | 4 | 2 × 8 | 22 | 56 (42) | 20 |
+| Deep | ~50 | 6 | 14 | 6 | 3 × 10 | 30 | 80 (60) | 28 |
+
+Measured with the production providers: Quick cited 9–10 sources in about 20–55 s, Standard 33 in about 2 min, Deep 45 in about 2.5 min. Groq's free tier (about 8,000 tokens per minute) is the main limit on speed: every model request is kept under ~6,400 tokens, and larger evidence sets are split into several requests.
 
 ---
 
@@ -205,7 +214,7 @@ flowchart TD
     C -- "change the report<br/>“make it shorter”, “focus on India”,<br/>“rewrite it for executives”" --> R["New research session<br/>parent_id → original · revision_instructions"]
     R --> RG["Full research graph again<br/>instructions guide planner + writer;<br/>length follows the request"]
     RG --> RR["Revised report shown under the follow-up<br/>(also its own page) — original never edited"]
-    C -- "ask something<br/>“why did costs fall?”, “what about Norway?”" --> S["Fresh search for the question<br/>Tavily (web) ∥ OpenAlex (scholarly)"]
+    C -- "ask something<br/>“why did costs fall?”, “what about Norway?”" --> S["Fresh search for the question<br/>Tavily (web, top pages read) ∥ Wikipedia ∥ OpenAlex (scholarly)"]
     S --> E["Evidence: the report's most relevant passages<br/>+ best passages from the new results"]
     E --> A["Answer with [n] citations → the answer's own source list<br/>(report sources open in the panel; new ones open the page)"]
 ```
@@ -378,18 +387,18 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    MAIN["app/main.tsx → app/router.tsx<br/>React Router, lazy route chunks"] --> PAGES
-    PAGES["app/routes/<br/>marketing · auth · workspace · projects · settings · shared"] --> COMP["components/<br/>feature + design-system components"]
+    MAIN["src/main.tsx → src/router.tsx<br/>React Router, lazy route chunks"] --> PAGES
+    PAGES["src/routes/<br/>marketing · auth · workspace · projects · settings · shared"] --> COMP["src/components/<br/>feature + design-system components"]
     COMP --> HOOKS["useResource · usePreferences · useAuth"]
-    HOOKS --> SVC["lib/services — the service boundary"]
-    SVC -->|VITE_DATA_SOURCE=api| APIAD["lib/api adapters<br/>ID token, 401 refresh, error envelope, SSE"]
-    SVC -->|=mock| MOCK["lib/mock adapters<br/>in-browser demo data"]
+    HOOKS --> SVC["src/lib/services — the service boundary"]
+    SVC -->|VITE_DATA_SOURCE=api| APIAD["src/lib/api adapters<br/>ID token, 401 refresh, error envelope, SSE"]
+    SVC -->|=mock| MOCK["src/lib/mock adapters<br/>in-browser demo data"]
     APIAD --> BACKEND["FastAPI"]
     APIAD --> EVENTS["apiEvents — change feed<br/>mutations trigger refetch"]
     EVENTS --> HOOKS
 ```
 
-- **Single-page app.** Vite builds a static bundle; `app/router.tsx` maps every URL to a lazily loaded route module (one chunk per area), with layouts as nested routes. Page titles are set per route; unknown paths render the not-found page and the host returns a real 404 for them (§13).
+- **Single-page app.** Vite builds a static bundle; `src/router.tsx` maps every URL to a lazily loaded route module (one chunk per area), with layouts as nested routes. Page titles are set per route; unknown paths render the not-found page and the host returns a real 404 for them (§13).
 - **One service boundary.** UI code only talks to `services.*`. API and mock adapters share one typed surface, so the app runs fully in **demo mode** without a backend.
 - **Research view** follows the real job state: a branded loading screen while queued/running, the cited report on completion, and a side panel listing every source (a sheet on small screens).
 - **Preferences** (default mode and sources, citation style — numeric, APA, MLA or Chicago — response length, notifications, retention) are stored on the profile and follow the account across devices; theme and motion stay per device.
@@ -533,6 +542,8 @@ Production refuses to start without TLS to the database, durable object storage,
 | `EMBEDDING_PROVIDER`, `OPENROUTER_API_KEY`, `EMBEDDING_MODEL`, `EMBEDDING_DIM` | Embeddings (`openrouter` or `fake`); dimension must stay 768 |
 | `OPENROUTER_TIMEOUT_S`, `OPENROUTER_RETRIES` | Embedding call bounds (default 25 s, 1 retry) |
 | `TAVILY_API_KEY`, `OPENALEX_MAILTO` | Web and academic search |
+| `WIKIPEDIA_API_KEY`, `WIKIPEDIA_LANGUAGE`, `WIKIPEDIA_USER_AGENT` | Wikipedia search (works without a key; a Wikimedia API token raises rate limits; default language `en`) |
+| `PAGE_READING_ENABLED`, `PAGE_FETCH_TIMEOUT_S` | Open and parse top result pages during research (default on, 8 s per page) |
 | `STORAGE_BACKEND`, `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | `local` or `s3` (Supabase) |
 | `REDIS_URL` | Optional Redis (`rediss://` in production) |
 | `RESEARCH_CONCURRENCY`, `INDEXING_CONCURRENCY`, `JOB_LEASE_S`, `JOB_MAX_ATTEMPTS`, `RESEARCH_TIMEOUT_S` | Job worker tuning |
@@ -556,21 +567,26 @@ These are read at build time and embedded in the bundle, so change them in Verce
 
 | Path | Contents |
 | --- | --- |
-| `index.html`, `app/main.tsx`, `app/router.tsx` | Entry page, React root and the route table |
-| `app/root.tsx`, `app/routes/` | Root layout, error and not-found pages; route modules per area (marketing, auth, workspace, projects, settings, shared) |
-| `components/` | Design system (`ui`, `brand`, `animations`) and feature components (`research`, `library`, `projects`, `settings`, `layout`, …) |
-| `lib/services/` | The frontend service boundary |
-| `lib/api/` | API client and typed adapters |
-| `lib/mock/`, `data/` | Demo-mode adapters and seed data |
-| `lib/firebase/` | Firebase initialisation (auth, optional App Check and Analytics) |
-| `lib/security/`, `lib/hosting.ts`, `vercel.json`, `vite.config.ts` | Security headers / CSP, SPA rewrites and 404s, build config |
-| `lib/speech/` | Voice input (speech recognition + recording fallback) and report narration |
-| `lib/utils/`, `lib/hooks/` | Shared logic and React hooks |
+| `index.html`, `src/main.tsx`, `src/router.tsx` | Entry page, React root and the route table |
+| `src/root.tsx`, `src/routes/` | Root layout, error and not-found pages; route modules per area (marketing, auth, workspace, projects, settings, shared) |
+| `src/styles/globals.css` | Tailwind v4 entry, design tokens and global styles |
+| `src/components/` | Design system (`ui`, `brand`, `animations`) and feature components (`research`, `library`, `projects`, `settings`, `layout`, …) |
+| `src/lib/services/` | The frontend service boundary |
+| `src/lib/api/` | API client and typed adapters |
+| `src/lib/mock/`, `src/data/` | Demo-mode adapters and seed data |
+| `src/lib/firebase/` | Firebase initialisation (auth, optional App Check and Analytics) |
+| `src/lib/security/`, `src/lib/hosting.ts`, `vercel.json`, `vite.config.ts` | Security headers / CSP, SPA rewrites and 404s, build config |
+| `src/lib/speech/` | Voice input (speech recognition + recording fallback) and report narration |
+| `src/lib/utils/`, `src/lib/hooks/` | Shared logic and React hooks |
+| `src/types/`, `src/vite-env.d.ts` | Shared TypeScript types; typed `import.meta.env` |
+| `public/` | Static files served as-is (icon, images) |
 | `tests/`, `e2e/` | Vitest unit tests; Playwright smoke and workflow suites |
 | `backend/app/api/` | FastAPI routes and dependencies |
-| `backend/app/services/` | Business logic, job worker, storage, providers (`llm/`), documents |
+| `backend/app/services/` | Business logic, job worker, storage, providers (`llm/`), documents, page content (`content/`: SSRF-safe fetch + BeautifulSoup), search clients (`search/`: Tavily, Wikipedia, OpenAlex) |
+| `backend/app/schemas/` | Pydantic request/response models |
 | `backend/app/research/` | LangGraph graph, agent nodes, prompts, citation mapper |
 | `backend/app/repositories/`, `backend/app/db/` | Data access, models, Alembic migrations |
 | `backend/tests/` | Backend test suite |
 | `render.yaml` | Render service definition |
+| `docs/` | Brand reference (`brand/theme.png`) and audit evidence |
 | `.github/workflows/ci.yml` | Continuous integration |

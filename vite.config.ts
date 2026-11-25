@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type Plugin } from "vite";
-import { matchRewrite, type Rewrite } from "./lib/hosting.ts";
-import { contentSecurityPolicy, staticHeaders } from "./lib/security/headers.ts";
+import { matchRewrite, type Rewrite } from "./src/lib/hosting.ts";
+import { contentSecurityPolicy, staticHeaders } from "./src/lib/security/headers.ts";
 
 const vercel = JSON.parse(readFileSync(new URL("./vercel.json", import.meta.url), "utf8")) as { rewrites: Rewrite[] };
 
@@ -69,7 +69,7 @@ export default defineConfig(({ mode, command }) => {
   const headers = Object.fromEntries(staticHeaders().map((h) => [h.key, h.value]));
   return {
     plugins: [react(), tailwindcss(), contentSecurityPolicyMeta(env, command === "serve", command === "build" && mode === "production"), staticHosting()],
-    resolve: { alias: { "@": fileURLToPath(new URL("./", import.meta.url)) } },
+    resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
     server: { port: 3000, headers },
     preview: { port: 3000, headers },
     build: {

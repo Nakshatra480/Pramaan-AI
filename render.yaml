@@ -52,3 +52,4 @@ services:
       # Search
       - { key: TAVILY_API_KEY, sync: false }
       - { key: OPENALEX_MAILTO, sync: false }
+      - { key: WIKIPEDIA_API_KEY, sync: false }

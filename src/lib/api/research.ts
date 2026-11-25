@@ -66,7 +66,7 @@ function fromDetail(r: ResearchDTO): Research {
   };
 }
 
-const ESTIMATE_S: Record<Research["mode"], number> = { quick: 60, standard: 120, deep: 240 };
+const ESTIMATE_S: Record<Research["mode"], number> = { quick: 60, standard: 130, deep: 180 };
 
 /** Open progress streams. While one is open it drives updates, so list polling pauses. */
 let activeStreams = 0;

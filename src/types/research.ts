@@ -86,7 +86,7 @@ export interface FollowUpSource {
   publishedAt?: string | null;
   authors: string[];
   /** Where it came from: the report's own sources, or a fresh web (Tavily) / scholarly (OpenAlex) search. */
-  origin: "report" | "web" | "academic";
+  origin: "report" | "web" | "academic" | "wikipedia";
   /** Set when it is one of the report's sources (opens in the side panel). */
   sourceId?: string | null;
 }

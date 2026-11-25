@@ -13,7 +13,7 @@ export function SourcePanel({ className, onSelect }: { className?: string; onSel
       <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-[13px] font-medium text-ink">Sources</h2>
         <span className="text-[12px] text-ink-faint tabular">
-          {sources.length} cited · {research.metrics.sources} reviewed
+          {new Set(research.report?.citations.map((c) => c.sourceId) ?? []).size} cited · {Math.max(research.metrics.sources, sources.length)} reviewed
         </span>
       </div>
       <ol className="space-y-1.5">

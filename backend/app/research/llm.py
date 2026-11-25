@@ -76,13 +76,31 @@ class ResearchLLM:
     # --------------------------------------------------------------- claims
 
     async def extract_claims(self, query: str, evidence: list[EvidenceItem], n: int) -> list[ClaimItem]:
+        """Claims drawn from the evidence. Large evidence sets are split into batches (each request stays within the
+        provider's per-request token budget) and the batches' claims are merged, near-duplicates combined."""
+        batches = claim_batches(evidence, n)
+        per_batch = -(-n // len(batches))
+        claims: list[ClaimItem] = []
+        for batch in batches:
+            for c in await self._claims_batch(query, batch, per_batch):
+                twin = next((x for x in claims if overlap(terms(x.text), terms(c.text)) >= 0.7), None)
+                if twin is not None:
+                    twin.evidence_ids = list(dict.fromkeys([*twin.evidence_ids, *c.evidence_ids]))
+                elif len(claims) < n:
+                    claims.append(ClaimItem(id=f"C{len(claims) + 1}", text=c.text, evidence_ids=c.evidence_ids))
+        return claims or _fallback_claims(evidence, n)
+
+    async def _claims_batch(self, query: str, evidence: list[EvidenceItem], n: int) -> list[ClaimItem]:
         ids = {e.id for e in evidence}
-        listing = "\n".join(f"{e.id}: {e.passage}" for e in evidence)
+        listing = "\n".join(f"{e.id}: {clip(e.passage, CLAIM_PASSAGE_CHARS)}" for e in evidence)
         data = await self._ask(
             "claims",
             f"Question: {query}\n\nEvidence:\n{listing}\n\n"
-            f"Extract up to {n} distinct, specific factual claims that answer the question. Each claim must be supported by the listed evidence ids.\n"
-            'Return {"claims": [{"text": "...", "evidence": ["E1", "E4"]}]}',
+            f"Extract up to {n} distinct, specific factual claims that answer the question. Each claim must be supported by the listed "
+            "evidence ids. List EVERY evidence id that supports a claim — when passages from different sources state the same fact, "
+            "include all of them, so the claim is credited to each source. Cover as many different sources as you can: every passage that "
+            "states a relevant fact should support at least one claim.\n"
+            'Return {"claims": [{"text": "...", "evidence": ["E1", "E4", "E9"]}]}',
             max_tokens=claims_budget(n),
         )
         claims: list[ClaimItem] = []
@@ -94,30 +112,32 @@ class ResearchLLM:
                 claims.append(ClaimItem(id=f"C{len(claims) + 1}", text=c["text"].strip()[:500], evidence_ids=list(dict.fromkeys(ev))))
                 if len(claims) >= n:
                     break
-        return claims or _fallback_claims(evidence, n)
+        return claims
 
     # --------------------------------------------------------- verification
 
     async def verify(self, claims: list[ClaimItem], evidence: dict[str, EvidenceItem]) -> list[ClaimItem]:
-        blocks = []
-        for c in claims:
-            passages = "\n".join(f"  {eid}: {evidence[eid].passage}" for eid in c.evidence_ids if eid in evidence) or "  (no evidence)"
-            blocks.append(f"{c.id}: {c.text}\n{passages}")
-        data = await self._ask(
-            "verify",
-            "For each claim, judge ONLY whether its listed evidence supports it.\n"
-            "status: supported | partially_supported | unsupported | insufficient_evidence; confidence 0-1.\n\n"
-            + "\n\n".join(blocks)
-            + '\n\nReturn {"results": [{"id": "C1", "status": "...", "confidence": 0.8}]}',
-            max_tokens=verify_budget(len(claims)),
-        )
         judged: dict[str, tuple[ClaimStatus, float]] = {}
-        if isinstance(data, dict):
-            for r in data.get("results", []):
-                try:
-                    judged[str(r["id"])] = (ClaimStatus(str(r["status"])), max(0.0, min(1.0, float(r.get("confidence", 0.5)))))
-                except (KeyError, ValueError, TypeError):
-                    continue
+        for batch in verify_batches(claims, evidence):
+            blocks = []
+            for c in batch:
+                shown = [eid for eid in c.evidence_ids if eid in evidence][:VERIFY_PASSAGES]
+                passages = "\n".join(f"  {eid}: {clip(evidence[eid].passage, VERIFY_PASSAGE_CHARS)}" for eid in shown) or "  (no evidence)"
+                blocks.append(f"{c.id}: {c.text}\n{passages}")
+            data = await self._ask(
+                "verify",
+                "For each claim, judge ONLY whether its listed evidence supports it.\n"
+                "status: supported | partially_supported | unsupported | insufficient_evidence; confidence 0-1.\n\n"
+                + "\n\n".join(blocks)
+                + '\n\nReturn {"results": [{"id": "C1", "status": "...", "confidence": 0.8}]}',
+                max_tokens=verify_budget(len(batch)),
+            )
+            if isinstance(data, dict):
+                for r in data.get("results", []):
+                    try:
+                        judged[str(r["id"])] = (ClaimStatus(str(r["status"])), max(0.0, min(1.0, float(r.get("confidence", 0.5)))))
+                    except (KeyError, ValueError, TypeError):
+                        continue
         for c in claims:
             h_status, h_conf = _heuristic_verdict(c, evidence)
             if not c.evidence_ids:
@@ -150,11 +170,13 @@ class ResearchLLM:
             "a short title and a 1–3 sentence body.\n"
             f"- analysis: up to {shape.sections} section(s) of {shape.paragraphs} paragraph(s), {shape.sentences} sentences each. Every paragraph "
             "must relate two or more claims to each other (agreement, contrast, trade-off, gap) and must not restate a finding's sentence. "
-            "Return an empty list if there is nothing to relate. Fewer, non-repeating sentences are better than a longer report.\n"
+            "Return an empty list if there is nothing to relate.\n"
+            "Cover every verified claim if you can — each in exactly one place — so every source behind the evidence is credited. "
+            "Do not pad: no filler, no restating.\n"
             'Return {"summary": ["paragraph"], "findings": [{"title": "...", "body": "... [C1]", "claims": ["C1"]}], '
             '"analysis": [{"heading": "...", "paragraphs": ["... [C3]"]}], "limitations": ["..."]}',
             context=instructions,
-            max_tokens=shape.tokens,
+            max_tokens=min(shape.tokens, max(1500, REQUEST_TOKENS - estimate_tokens(listing) - 700)),
         )
         if isinstance(data, dict) and isinstance(data.get("summary"), list) and data["summary"]:
             draft = ReportDraft(
@@ -224,20 +246,116 @@ class ResearchLLM:
 # ------------------------------------------------------------------ budgets
 
 
+# Groq's free tier allows about 8,000 tokens per minute, and a single request (prompt + its output budget) must
+# fit inside that. Requests are kept under this budget; larger evidence sets are split into batches.
+REQUEST_TOKENS = 6400
+PROMPT_OVERHEAD = 380
+CLAIM_PASSAGE_CHARS = 420
+# At most this many passages per claim request: a model shown 50+ passages keeps citing the same few sources.
+CLAIM_BATCH_PASSAGES = 28
+VERIFY_PASSAGE_CHARS = 360
+VERIFY_PASSAGES = 2
+
+
+def estimate_tokens(text: str) -> int:
+    return len(text) // 4 + 1
+
+
+def clip(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + "…"
+
+
 def claims_budget(n: int) -> int:
     """Output tokens for claim extraction. Reasoning models spend part of the budget thinking, so a
     fixed small cap truncated the claim list on deep runs (audit H-02)."""
-    return min(6000, 800 + 220 * n)
+    return min(6000, 700 + 190 * n)
 
 
 def verify_budget(n_claims: int) -> int:
     return min(5000, 700 + 140 * n_claims)
 
 
+def claim_batches(evidence: list[EvidenceItem], n: int) -> list[list[EvidenceItem]]:
+    """Fewest batches whose requests fit REQUEST_TOKENS. Evidence is dealt round-robin (it is relevance-ordered),
+    so every batch mixes strong and weaker passages from many sources."""
+    cost = [estimate_tokens(clip(e.passage, CLAIM_PASSAGE_CHARS)) + 4 for e in evidence]
+    for k in range(1, max(2, len(evidence) + 1)):
+        groups = [list(range(i, len(evidence), k)) for i in range(k)]
+        out_budget = claims_budget(-(-n // k))
+        if max(len(g) for g in groups) > CLAIM_BATCH_PASSAGES:
+            continue
+        if all(sum(cost[i] for i in g) + PROMPT_OVERHEAD + out_budget <= REQUEST_TOKENS for g in groups):
+            return [[evidence[i] for i in g] for g in groups if g] or [evidence]
+    return [evidence]
+
+
+def verify_batches(claims: list[ClaimItem], evidence: dict[str, EvidenceItem]) -> list[list[ClaimItem]]:
+    """Consecutive claim batches whose verification requests fit REQUEST_TOKENS."""
+    batches: list[list[ClaimItem]] = []
+    cur: list[ClaimItem] = []
+    cur_cost = PROMPT_OVERHEAD
+    for c in claims:
+        shown = [e for e in c.evidence_ids if e in evidence][:VERIFY_PASSAGES]
+        cost = estimate_tokens(c.text) + sum(estimate_tokens(clip(evidence[e].passage, VERIFY_PASSAGE_CHARS)) + 4 for e in shown) + 8
+        if cur and cur_cost + cost + verify_budget(len(cur) + 1) > REQUEST_TOKENS:
+            batches.append(cur)
+            cur, cur_cost = [], PROMPT_OVERHEAD
+        cur.append(c)
+        cur_cost += cost
+    if cur:
+        batches.append(cur)
+    return batches
+
+
+_NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
+
+
+def corroborate(claims: list[ClaimItem], evidence: list[EvidenceItem], per_claim: int) -> int:
+    """Credits each supported claim to other sources that state the same fact: a passage from a source the claim
+    doesn't already cite is added when it contains most of the claim's content words (and its figures, if the
+    claim has any). Returns how many evidence links were added."""
+    added = 0
+    by_source = {e.id: e.source_key for e in evidence}
+    for c in claims:
+        if c.status not in (ClaimStatus.supported, ClaimStatus.partially_supported):
+            continue
+        ct = terms(c.text)
+        if len(ct) < 4:
+            continue
+        numbers = set(_NUMBER.findall(c.text))
+        have = {by_source[e] for e in c.evidence_ids if e in by_source}
+        scored: list[tuple[float, EvidenceItem]] = []
+        for e in evidence:
+            if e.source_key in have or e.id in c.evidence_ids:
+                continue
+            pt = terms(e.passage)
+            shared = ct & pt
+            coverage = len(shared) / len(ct)
+            if len(shared) < 4 or coverage < CORROBORATION:
+                continue
+            if numbers and not numbers & set(_NUMBER.findall(e.passage)):
+                continue
+            scored.append((coverage + 0.1 * e.relevance, e))
+        extra = 0
+        for _, e in sorted(scored, key=lambda x: -x[0]):
+            if extra >= per_claim:
+                break
+            if e.source_key in have:  # one passage per newly credited source
+                continue
+            c.evidence_ids.append(e.id)
+            have.add(e.source_key)
+            extra += 1
+        added += extra
+    return added
+
+
+CORROBORATION = 0.6
+
+
 _SHAPES: dict[str, dict[str, int]] = {
-    "quick": {"summary": 1, "findings": 3, "sections": 1, "paragraphs": 1, "tokens": 2600},
-    "standard": {"summary": 1, "findings": 5, "sections": 2, "paragraphs": 1, "tokens": 3600},
-    "deep": {"summary": 2, "findings": 8, "sections": 3, "paragraphs": 2, "tokens": 5600},
+    "quick": {"summary": 1, "findings": 4, "sections": 1, "paragraphs": 1, "tokens": 2800},
+    "standard": {"summary": 1, "findings": 7, "sections": 3, "paragraphs": 1, "tokens": 4200},
+    "deep": {"summary": 2, "findings": 10, "sections": 4, "paragraphs": 2, "tokens": 5000},
 }
 _LENGTH: dict[str, tuple[int, str, float]] = {"concise": (-1, "2-3", 0.7), "balanced": (0, "3-4", 1.0), "comprehensive": (1, "4-6", 1.4)}
 
@@ -318,6 +436,34 @@ def _weak_limitations(weak: list[ClaimItem]) -> list[str]:
     return [f"Pramaan couldn't find enough reliable evidence to support {len(weak)} {noun}; they are excluded from the findings."]
 
 
+def cite_claim(c: ClaimItem) -> str:
+    text = c.text.rstrip(".")
+    hedge = "Evidence partially indicates that " if c.status == ClaimStatus.partially_supported else ""
+    return f"{hedge}{text[:1].lower() + text[1:] if hedge else text} [{c.id}]."
+
+
+SUPPORTING_HEADING = "Supporting evidence"
+
+
+def cover_claims(draft: ReportDraft, claims: list[ClaimItem]) -> ReportDraft:
+    """Adds every verified claim the written report left out, in a "Supporting evidence" section, so each verified
+    claim — and every source behind it — is credited. Claims restating something already in the report are
+    removed afterwards by `dedupe_report`."""
+    text = json.dumps([draft.summary, draft.findings, draft.analysis])
+    used = set(re.findall(r"C\d+", text))
+    missing = [c for c in claims if c.status in (ClaimStatus.supported, ClaimStatus.partially_supported) and c.id not in used]
+    if not missing:
+        return draft
+    sentences_ = [cite_claim(c) for c in missing]
+    paragraphs = [" ".join(sentences_[i : i + 2]) for i in range(0, len(sentences_), 2)]
+    existing = next((a for a in draft.analysis if a.get("heading") == SUPPORTING_HEADING), None)
+    if existing is not None:
+        existing["paragraphs"] = [*existing.get("paragraphs", []), *paragraphs]
+    else:
+        draft.analysis = [*draft.analysis, {"heading": SUPPORTING_HEADING, "paragraphs": paragraphs}]
+    return draft
+
+
 def _fallback_report(query: str, usable: list[ClaimItem], weak: list[ClaimItem]) -> ReportDraft:
     if not usable:
         return ReportDraft(
@@ -327,16 +473,13 @@ def _fallback_report(query: str, usable: list[ClaimItem], weak: list[ClaimItem])
             limitations=["The sources found did not contain passages that directly support an answer.", *_weak_limitations(weak)],
         )
 
-    def cite(c: ClaimItem) -> str:
-        text = c.text.rstrip(".")
-        hedge = "Evidence partially indicates that " if c.status == ClaimStatus.partially_supported else ""
-        return f"{hedge}{text[:1].lower() + text[1:] if hedge else text} [{c.id}]."
+    cite = cite_claim
 
     # Each claim appears once: the strongest in the summary, the next ones as findings, the rest below.
     lead, top, rest = usable[:1], usable[1:5], usable[5:]
     summary = [" ".join(cite(c) for c in lead)]
     findings = [{"title": _title(c.text), "body": cite(c), "claims": [c.id]} for c in top]
-    analysis = [{"heading": "Supporting evidence", "paragraphs": [" ".join(cite(c) for c in rest[i : i + 3]) for i in range(0, len(rest), 3)]}] if rest else []
+    analysis = [{"heading": SUPPORTING_HEADING, "paragraphs": [" ".join(cite(c) for c in rest[i : i + 3]) for i in range(0, len(rest), 3)]}] if rest else []
     limitations = [
         "This report was assembled extractively from source passages without model synthesis; wording follows the sources closely.",
         *_weak_limitations(weak),

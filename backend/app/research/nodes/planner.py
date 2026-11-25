@@ -13,6 +13,8 @@ async def planner(state: ResearchState, deps: ResearchDeps) -> dict[str, Any]:
     n = MODE_LIMITS[state["mode"]]["subqueries"]
     plan = await deps.llm.plan(state["query"], n, state.get("project_instructions"), state.get("prior_research", []))
     await deps.reporter.complete("planning", f"{len(plan.subqueries)} research directions planned")
-    web_like = [c for c in state["channels"] if c in ("web", "academic")]
-    await deps.reporter.start("searching", f"Searching {' and '.join(web_like)} sources" if web_like else "Preparing sources")
+    labels = {"web": ["web", "Wikipedia"], "academic": ["academic"]}
+    web_like = [label for c in state["channels"] for label in labels.get(c, [])]
+    listing = ", ".join(web_like[:-1]) + f" and {web_like[-1]}" if len(web_like) > 1 else "".join(web_like)
+    await deps.reporter.start("searching", f"Searching {listing} sources" if web_like else "Preparing sources")
     return {"research_plan": plan, "subqueries": plan.subqueries}

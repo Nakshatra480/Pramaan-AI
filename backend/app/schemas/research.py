@@ -116,7 +116,7 @@ class FollowUpSource(ApiModel):
     type: SourceType
     published_at: date | None = None
     authors: list[str] = []
-    origin: Literal["report", "web", "academic"]
+    origin: Literal["report", "web", "academic", "wikipedia"]
     source_id: uuid.UUID | None = None  # set when it's one of the report's own sources (opens in the panel)
 
 

@@ -15,11 +15,11 @@ import { RichText } from "./RichText";
 import { SourceDrawer } from "./SourceDrawer";
 import { ThinkingIndicator } from "./Thinking";
 
-const ORIGIN: Record<FollowUpSource["origin"], string> = { report: "From this report", web: "Web", academic: "Scholarly" };
+const ORIGIN: Record<FollowUpSource["origin"], string> = { report: "From this report", web: "Web", academic: "Scholarly", wikipedia: "Wikipedia" };
 
 /**
  * A follow-up question's answer. `[n]` cites the n-th entry of the answer's own source list, which mixes
- * the report's sources (open in the side panel) with what a fresh web / scholarly search found (open the page).
+ * the report's sources (open in the side panel) with what a fresh web / Wikipedia / scholarly search found (open the page).
  * Answers saved before per-answer sources existed cite the side panel's numbering instead.
  */
 export function FollowUpAnswer({ followUp }: { followUp: FollowUp }) {

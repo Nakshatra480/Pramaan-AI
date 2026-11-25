@@ -1,6 +1,6 @@
 """LangGraph research workflow (PRD §14–15).
 
-START → query_understanding → planner → (web ∥ academic ∥ knowledge) → evidence
+START → query_understanding → planner → (web ∥ wikipedia ∥ academic ∥ knowledge) → evidence
       → claims → verification → synthesis → citations → END
 """
 
@@ -21,6 +21,7 @@ from app.research.nodes.query_understanding import query_understanding
 from app.research.nodes.synthesis import synthesis
 from app.research.nodes.verification import verification
 from app.research.nodes.web_research import web_research
+from app.research.nodes.wikipedia_research import wikipedia_research
 from app.research.state import ResearchState
 
 
@@ -30,6 +31,7 @@ def build_graph() -> CompiledStateGraph:  # type: ignore[type-arg]
     g.add_node("query_understanding", query_understanding)
     g.add_node("planner", planner)
     g.add_node("web_research", web_research)
+    g.add_node("wikipedia_research", wikipedia_research)
     g.add_node("academic_research", academic_research)
     g.add_node("knowledge_retrieval", knowledge_retrieval)
     g.add_node("evidence", evidence)
@@ -40,9 +42,10 @@ def build_graph() -> CompiledStateGraph:  # type: ignore[type-arg]
 
     g.add_edge(START, "query_understanding")
     g.add_edge("query_understanding", "planner")
-    for branch in ("web_research", "academic_research", "knowledge_retrieval"):
+    branches = ("web_research", "wikipedia_research", "academic_research", "knowledge_retrieval")
+    for branch in branches:
         g.add_edge("planner", branch)
-    g.add_edge(["web_research", "academic_research", "knowledge_retrieval"], "evidence")
+    g.add_edge(list(branches), "evidence")
     g.add_edge("evidence", "claims")
     g.add_edge("claims", "verification")
     g.add_edge("verification", "synthesis")

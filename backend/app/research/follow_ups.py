@@ -6,8 +6,9 @@ Every follow-up is routed to one of two workflows:
   section on costs", "rewrite it for executives"). Pramaan regenerates the report as a *new* research
   session that carries the user's instructions; the original report is never modified.
 - **question** — the user asks something about the report or its topic. Pramaan searches the web
-  (Tavily) and the scholarly literature (OpenAlex) for that question, and answers from the report's own
-  evidence plus what it just found, citing both.
+  (Tavily, with the top pages read in full and parsed with BeautifulSoup), Wikipedia and the scholarly
+  literature (OpenAlex) for that question, and answers from the report's own evidence plus what it just
+  found, citing both.
 
 The intent is decided by the model when it's available, with a keyword heuristic as the fallback.
 """
@@ -24,7 +25,7 @@ import httpx
 
 from app.research.state import EvidenceItem, SourceItem
 from app.research.text import overlap, terms
-from app.services.tavily import normalize_url
+from app.services.search.common import normalize_url
 
 logger = logging.getLogger("pramaan.research")
 
@@ -125,8 +126,10 @@ def revision_title(title: str) -> str:
 
 WEB_RESULTS = 5
 ACADEMIC_RESULTS = 4
+WIKIPEDIA_RESULTS = 2
+PAGES_READ = 3  # top web results opened and parsed for this answer
 REPORT_EVIDENCE = 14
-FRESH_EVIDENCE = 12
+FRESH_EVIDENCE = 14
 PASSAGE_CHARS = 700
 
 
@@ -135,7 +138,7 @@ class Candidate:
     """A citable source for a follow-up answer: one of the report's sources or a fresh search result."""
 
     key: str
-    origin: Literal["report", "web", "academic"]
+    origin: Literal["report", "web", "academic", "wikipedia"]
     title: str
     url: str
     domain: str
@@ -176,13 +179,17 @@ def passages(text: str, q: set[str], limit: int = 2) -> list[str]:
     return [c for c in ranked[:limit] if c]
 
 
-async def search_fresh(web: Any, academic: Any, query: str) -> tuple[list[tuple[str, SourceItem]], list[str]]:
-    """Web (Tavily) and scholarly (OpenAlex) results for a follow-up, in parallel. Failures degrade, never raise."""
+async def search_fresh(web: Any, academic: Any, query: str, *, wikipedia: Any = None, reader: Any = None) -> tuple[list[tuple[str, SourceItem]], list[str]]:
+    """Web (Tavily), Wikipedia and scholarly (OpenAlex) results for a follow-up, in parallel; then the best web
+    results' pages are read in full (BeautifulSoup). Failures degrade, never raise."""
     tasks: list[Any] = []
     labels: list[str] = []
     if getattr(web, "configured", True):
         tasks.append(web.search(query, max_results=WEB_RESULTS, deep=False))
         labels.append("web")
+    if wikipedia is not None and getattr(wikipedia, "configured", True):
+        tasks.append(wikipedia.search(query, max_results=WIKIPEDIA_RESULTS))
+        labels.append("wikipedia")
     tasks.append(academic.search(query, max_results=ACADEMIC_RESULTS))
     labels.append("academic")
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -195,6 +202,11 @@ async def search_fresh(web: Any, academic: Any, query: str) -> tuple[list[tuple[
             errors.append(f"{label}_search_failed")
             continue
         found.extend((label, s) for s in r)
+    if reader is not None:
+        try:
+            await reader.read([s for label, s in found if label == "web"], limit=PAGES_READ)
+        except Exception as e:  # reading only enriches the answer
+            logger.info("follow_up_read_failed", extra={"fields": {"error": type(e).__name__}})
     return found, errors
 
 
@@ -224,12 +236,13 @@ def build_evidence(
         url_key = normalize_url(s.url) if s.url else s.key
         key = by_url.get(url_key) or f"fresh:{url_key}"
         if key not in candidates:
-            origin: Literal["web", "academic"] = "academic" if channel == "academic" else "web"
+            origin: Literal["web", "academic", "wikipedia"] = channel if channel in ("academic", "wikipedia") else "web"  # type: ignore[assignment]
             candidates[key] = Candidate(
                 key, origin, s.title, s.url, s.domain, s.publisher, getattr(s.type, "value", str(s.type)), s.published_at, list(s.authors), None
             )
-        text = s.snippet or s.abstract or ""
-        for p in passages(text, q):
+        # Page passages (parsed from the page itself) when it was read, else the search snippet / abstract.
+        texts = sorted(s.passages, key=lambda p: -overlap(q, terms(p)))[:3] if s.passages else passages(s.snippet or s.abstract or "", q)
+        for p in texts:
             score = overlap(q, terms(p)) + 0.25 * (s.relevance or 0)
             fresh_items.append((score, EvidenceItem(id="", source_key=key, passage=p, relevance=s.relevance or 0.5)))
     for _, e in sorted(fresh_items, key=lambda x: -x[0])[:FRESH_EVIDENCE]:

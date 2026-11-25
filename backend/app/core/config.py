@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     # Research providers
     tavily_api_key: SecretStr = SecretStr("")
     openalex_mailto: str = ""
+    # Wikipedia (MediaWiki API). Works anonymously; an API key (a Wikimedia personal API token / OAuth 2 access token)
+    # is sent as a bearer token for higher rate limits. The User-Agent identifies Pramaan, per Wikimedia's API policy.
+    wikipedia_api_key: SecretStr = SecretStr("")
+    wikipedia_language: str = "en"
+    wikipedia_user_agent: str = "PramaanAI/1.0 (https://pramaan-ai-seven.vercel.app; research assistant)"
+    # Search results whose pages are opened and parsed (BeautifulSoup) during research.
+    page_reading_enabled: bool = True
+    page_fetch_timeout_s: float = 8.0
     research_timeout_s: int = 600
 
     # Text generation — Groq in production; "fake" is for tests/offline demos (extractive reports).

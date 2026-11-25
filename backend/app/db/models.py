@@ -112,6 +112,7 @@ class SourceType(StrEnum):
     documentation = "documentation"
     report = "report"
     library = "library"
+    encyclopedia = "encyclopedia"  # Wikipedia (stored as VARCHAR, so adding a value needs no migration)
 
 
 class DocumentKind(StrEnum):

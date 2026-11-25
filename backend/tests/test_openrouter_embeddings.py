@@ -62,7 +62,12 @@ async def test_documents_are_batched_by_configured_size() -> None:
         return vectors(body)
 
     out = await EmbeddingService(embedder(handler), batch_size=128).embed_documents([f"t{i}" for i in range(300)])
-    assert len(out) == 300 and sizes == [128, 128, 44]
+    # Batches of the configured size (fewest requests), sent concurrently; results stay in input order.
+    assert len(out) == 300 and sorted(sizes) == [44, 128, 128]
+    assert out[0] == out[128] and out[1] != out[0]  # each batch's vectors are positional (index-derived in this fake)
+    sizes.clear()
+    await EmbeddingService(embedder(handler), batch_size=128).embed_documents([f"t{i}" for i in range(100)])
+    assert sizes == [100]  # fits one request: one request
 
 
 async def test_default_batch_size_comes_from_settings() -> None:

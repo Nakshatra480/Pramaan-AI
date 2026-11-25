@@ -22,9 +22,9 @@ from app.db.database import get_sessionmaker
 from app.db.models import ActivityKind, Document, DocumentChunk, DocumentKind, DocumentStatus, ProjectDocument
 from app.repositories.library import LibraryRepository
 from app.repositories.projects import ActivityRepository
+from app.services.content.fetch import fetch_page
 from app.services.documents.chunking import chunk_document
 from app.services.documents.extract import ExtractedDocument, ExtractedPage, ExtractionError, extract, normalize
-from app.services.documents.fetch import fetch_page
 from app.services.embeddings import EmbeddingService
 from app.services.llm.base import AVAILABILITY_ERRORS, ProviderError
 from app.services.storage.base import ObjectNotFound, StorageError, StorageService, get_storage, legacy_text_key, text_key

@@ -1,6 +1,6 @@
 /** Source & evidence types. Mirrors the future `sources` / `evidence` tables (PRD §21, §23). */
 
-export type SourceType = "academic" | "web" | "news" | "documentation" | "report" | "library";
+export type SourceType = "academic" | "web" | "news" | "documentation" | "report" | "library" | "encyclopedia";
 
 export interface Source {
   id: string;

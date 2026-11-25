@@ -1,78 +1,21 @@
-"""TavilyService — web search, normalisation, dedupe, extraction. Key stays server-side."""
+"""TavilyService — web search, normalisation and dedupe. Key stays server-side. Result pages are read separately
+(BeautifulSoup, see app/services/content/reader.py)."""
 
 from __future__ import annotations
 
 import logging
 from datetime import date
 from typing import Protocol
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 
 import httpx
 
 from app.core.config import get_settings
-from app.db.models import SourceType
 from app.research.state import SourceItem
 from app.services import cache
+from app.services.search.common import classify, normalize_url
 
 logger = logging.getLogger("pramaan.tavily")
-
-NEWS = {
-    "reuters.com",
-    "bloomberg.com",
-    "ft.com",
-    "nytimes.com",
-    "theguardian.com",
-    "bbc.co.uk",
-    "bbc.com",
-    "wsj.com",
-    "apnews.com",
-    "cnbc.com",
-    "theverge.com",
-    "techcrunch.com",
-    "economist.com",
-}
-ACADEMIC = {
-    "arxiv.org",
-    "nature.com",
-    "science.org",
-    "sciencedirect.com",
-    "springer.com",
-    "ieee.org",
-    "ieeexplore.ieee.org",
-    "acm.org",
-    "pnas.org",
-    "nejm.org",
-    "thelancet.com",
-    "jamanetwork.com",
-    "plos.org",
-    "journals.plos.org",
-    "openreview.net",
-    "aclanthology.org",
-    "ncbi.nlm.nih.gov",
-    "pubmed.ncbi.nlm.nih.gov",
-}
-REPORTS = {"iea.org", "mckinsey.com", "who.int", "worldbank.org", "imf.org", "oecd.org", "bis.org", "ipcc.ch"}
-
-
-def normalize_url(url: str) -> str:
-    p = urlparse(url.strip())
-    host = (p.hostname or "").lower().removeprefix("www.")
-    path = p.path.rstrip("/") or "/"
-    query = "&".join(q for q in p.query.split("&") if q and not q.lower().startswith(("utm_", "ref=", "fbclid", "gclid")))
-    return urlunparse((p.scheme.lower() or "https", host, path, "", query, ""))
-
-
-def classify(domain: str) -> SourceType:
-    d = domain.lower()
-    if any(d == x or d.endswith("." + x) for x in ACADEMIC):
-        return SourceType.academic
-    if any(d == x or d.endswith("." + x) for x in NEWS):
-        return SourceType.news
-    if any(d == x or d.endswith("." + x) for x in REPORTS) or d.endswith(".gov") or d.endswith(".int"):
-        return SourceType.report
-    if d.startswith("docs.") or "/docs" in d or d in {"github.com", "developer.mozilla.org"}:
-        return SourceType.documentation
-    return SourceType.web
 
 
 def _date(value: object) -> date | None:

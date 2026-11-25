@@ -27,6 +27,7 @@ RUN_LIMITATIONS = {
     "web_search_failed": "Web search failed for part of this research, so some web sources may be missing.",
     "academic_search_failed": "Academic search failed for part of this research, so some papers may be missing.",
     "web_search_not_configured": "Web search is not available on this server, so no web sources were consulted.",
+    "wikipedia_search_failed": "Wikipedia search failed for part of this research, so some encyclopedia articles may be missing.",
 }
 
 

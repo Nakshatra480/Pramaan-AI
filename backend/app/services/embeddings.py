@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from app.core.config import get_settings
 from app.services import cache
 from app.services.llm.base import EmbeddingProvider, EmbeddingTask, MalformedOutput
 from app.services.llm.factory import get_embedder
+
+EMBED_CONCURRENCY = 4
 
 
 class EmbeddingService:
@@ -17,15 +21,23 @@ class EmbeddingService:
         self._query_ttl = s.cache_ttl_embed_s
 
     async def _embed(self, texts: list[str], task: EmbeddingTask) -> list[list[float]]:
-        out: list[list[float]] = []
-        for i in range(0, len(texts), self.batch_size):
-            batch = await self.provider.embed(texts[i : i + self.batch_size], task=task)
+        """Batches of the configured size run concurrently (a few at a time) instead of one after another, which
+        made evidence ranking the slowest step of a research run. The number of requests is unchanged."""
+        gate = asyncio.Semaphore(EMBED_CONCURRENCY)
+        # Full-size batches: the fewest requests (free embedding tiers cap requests per day), sent in parallel.
+        size = self.batch_size
+
+        async def one(chunk: list[str]) -> list[list[float]]:
+            async with gate:
+                batch = await self.provider.embed(chunk, task=task)
             for v in batch:
                 if len(v) != self.dim:
                     # A different embedding model would silently corrupt retrieval — refuse it.
                     raise MalformedOutput(f"embedding dimension {len(v)} != {self.dim} (check EMBEDDING_MODEL)")
-            out.extend(batch)
-        return out
+            return batch
+
+        batches = await asyncio.gather(*(one(texts[i : i + size]) for i in range(0, len(texts), size)))
+        return [v for b in batches for v in b]
 
     async def embed_documents(self, texts: list[str]) -> list[list[float]]:
         return await self._embed(texts, "document")

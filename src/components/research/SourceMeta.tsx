@@ -1,4 +1,4 @@
-import { BookMarked, FileText, Globe, Library, Newspaper, ScrollText } from "lucide-react";
+import { BookMarked, BookOpenText, FileText, Globe, Library, Newspaper, ScrollText } from "lucide-react";
 import { SOURCE_TYPE_LABEL } from "@/data/sources";
 import type { Source, SourceType } from "@/types";
 import { cn } from "@/lib/utils/cn";
@@ -11,6 +11,7 @@ const TYPE_ICON: Record<SourceType, typeof Globe> = {
   documentation: FileText,
   report: ScrollText,
   library: Library,
+  encyclopedia: BookOpenText,
 };
 
 export function SourceTypeIcon({ type, className }: { type: SourceType; className?: string }) {

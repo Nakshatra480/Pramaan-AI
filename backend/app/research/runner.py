@@ -32,12 +32,14 @@ from app.research.progress import LeaseLost, ProgressReporter, ResearchCancelled
 from app.research.state import ChunkHit, ResearchState, SourceItem
 from app.research.status import ErrorCode
 from app.services import progress_events
-from app.services.academic import OpenAlexService
+from app.services.content.reader import NoReader, PageReader, WebPageReader
 from app.services.embeddings import EmbeddingService
 from app.services.llm.base import ProviderError
 from app.services.llm.factory import get_embedder, get_llm
 from app.services.retrieval import HybridRetriever
-from app.services.tavily import TavilyService
+from app.services.search.openalex import OpenAlexService
+from app.services.search.tavily import TavilyService
+from app.services.search.wikipedia import WikipediaService
 
 logger = logging.getLogger("pramaan.research")
 
@@ -76,6 +78,17 @@ def _academic() -> OpenAlexService:
     return OpenAlexService(get_settings().openalex_mailto)
 
 
+@lru_cache
+def _wikipedia() -> WikipediaService:
+    s = get_settings()
+    return WikipediaService(s.wikipedia_api_key.get_secret_value(), language=s.wikipedia_language, user_agent=s.wikipedia_user_agent)
+
+
+def _reader() -> PageReader:
+    s = get_settings()
+    return WebPageReader(timeout_s=s.page_fetch_timeout_s) if s.page_reading_enabled else NoReader()
+
+
 def default_deps(research_id: uuid.UUID) -> ResearchDeps:
     return ResearchDeps(
         llm=ResearchLLM(get_llm()),  # Groq: text generation
@@ -85,6 +98,8 @@ def default_deps(research_id: uuid.UUID) -> ResearchDeps:
         retrieve=_retrieve,
         reporter=ProgressReporter(research_id),
         persist_sources=_persist_sources,
+        wikipedia=_wikipedia(),
+        reader=_reader(),
     )
 
 

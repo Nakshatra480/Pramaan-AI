@@ -21,7 +21,7 @@ class SourceItem:
     domain: str
     publisher: str
     type: SourceType
-    snippet: str  # text available for evidence extraction
+    snippet: str  # the search API's summary of the result
     relevance: float = 0.0
     authors: list[str] = field(default_factory=list)
     published_at: date | None = None
@@ -31,6 +31,7 @@ class SourceItem:
     chunk_id: uuid.UUID | None = None
     location: str | None = None
     db_id: uuid.UUID | None = None  # set once persisted
+    passages: list[str] = field(default_factory=list)  # the page's own text, parsed with BeautifulSoup (when it could be read)
 
 
 @dataclass
@@ -111,8 +112,21 @@ class ResearchState(TypedDict, total=False):
     metadata: dict[str, object]
 
 
+# Per-mode research budgets. `cited` is the target number of cited sources in the finished report (about 10 / 35 / 50);
+# `max_sources` caps how many distinct sources evidence may come from (so a report lands near its target rather than
+# far above it); the other limits are sized to reach it: enough distinct sources found (web + Wikipedia + scholarly), enough of
+# their pages read, evidence spread across them, and claims that list every source that supports them.
 MODE_LIMITS: dict[ResearchMode, dict[str, int]] = {
-    ResearchMode.quick: {"subqueries": 2, "web": 5, "academic": 3, "chunks": 6, "evidence": 12, "claims": 6},
-    ResearchMode.standard: {"subqueries": 3, "web": 6, "academic": 5, "chunks": 10, "evidence": 24, "claims": 10},
-    ResearchMode.deep: {"subqueries": 5, "web": 8, "academic": 8, "chunks": 16, "evidence": 40, "claims": 16},
-}
+    ResearchMode.quick: {
+        "cited": 10, "subqueries": 2, "web": 7, "academic": 4, "academic_queries": 1, "wikipedia": 2, "wikipedia_queries": 1,
+        "read": 8, "chunks": 6, "evidence": 18, "max_sources": 12, "claims": 8, "corroborate": 2,
+    },
+    ResearchMode.standard: {
+        "cited": 35, "subqueries": 4, "web": 12, "academic": 8, "academic_queries": 2, "wikipedia": 4, "wikipedia_queries": 2,
+        "read": 22, "chunks": 10, "evidence": 56, "max_sources": 42, "claims": 20, "corroborate": 4,
+    },
+    ResearchMode.deep: {
+        "cited": 50, "subqueries": 6, "web": 14, "academic": 10, "academic_queries": 3, "wikipedia": 6, "wikipedia_queries": 3,
+        "read": 30, "chunks": 16, "evidence": 80, "max_sources": 60, "claims": 28, "corroborate": 5,
+    },
+}  # fmt: skip

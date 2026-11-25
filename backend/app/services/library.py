@@ -13,7 +13,7 @@ from app.repositories.library import LibraryRepository
 from app.repositories.projects import ProjectRepository
 from app.schemas.library import CollectionOut, ContentSection, DocumentDetailOut, DocumentOut
 from app.services.access import require_document, require_project
-from app.services.documents.fetch import validate_url
+from app.services.content.fetch import validate_url
 from app.services.documents.processor import STAGE_PROGRESS, sha256, stored_text_key
 from app.services.documents.validation import detect
 from app.services.jobs import JobRunner, get_job_runner

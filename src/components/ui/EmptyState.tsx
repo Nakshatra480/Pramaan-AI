@@ -11,7 +11,7 @@ interface EmptyStateProps {
   compact?: boolean;
 }
 
-/** Branded empty state: the Pramaan mark sits quietly inside concentric guide rings (from theme.png). */
+/** Branded empty state: the Pramaan mark sits quietly inside concentric guide rings (from docs/brand/theme.png). */
 export function EmptyState({ title, description, action, icon, className, compact }: EmptyStateProps) {
   return (
     <div className={cn("flex flex-col items-center text-center", compact ? "py-10" : "py-16 sm:py-20", className)}>

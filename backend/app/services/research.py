@@ -317,10 +317,11 @@ async def _answer_with_search(
     history: list[tuple[str, str]],
     summary: list[str],
 ) -> None:
-    """Answers from the report's evidence plus a fresh Tavily (web) and OpenAlex (scholarly) search for the question.
+    """Answers from the report's evidence plus a fresh Tavily (web, pages read in full), Wikipedia and OpenAlex
+    (scholarly) search for the question.
     Citations [n] number this answer's own source list: report sources keep a link to the side panel."""
     a = await repo.artifacts(parent.id)
-    fresh, errors = await search_fresh(deps.web, deps.academic, search_query)
+    fresh, errors = await search_fresh(deps.web, deps.academic, search_query, wikipedia=getattr(deps, "wikipedia", None), reader=getattr(deps, "reader", None))
     report_sources = {str(s.id): s for s in a["sources"]}
     items, candidates = build_evidence(msg.question, list(a["evidence"]), report_sources, fresh)
     paragraphs = await deps.llm.follow_up(msg.question, items, history, context=" ".join(summary) or None)

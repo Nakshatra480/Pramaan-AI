@@ -82,7 +82,7 @@ async def test_private_address_fetch_is_refused() -> None:
     import pytest
 
     from app.core.exceptions import ValidationFailed
-    from app.services.documents.fetch import fetch_page
+    from app.services.content.fetch import fetch_page
 
     for url in ["http://127.0.0.1/", "http://localhost/admin", "http://169.254.169.254/latest/meta-data/", "http://10.0.0.5/"]:
         with pytest.raises(ValidationFailed):

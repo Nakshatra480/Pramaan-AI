@@ -4,12 +4,12 @@
 
 /* ==========================================================================
    Pramaan AI — design tokens
-   Source of truth: theme.png + PRD §50. Raw brand colours are exposed as
+   Source of truth: docs/brand/theme.png + PRD §50. Raw brand colours are exposed as
    --brand-*; the UI consumes semantic tokens so light/dark can swap cleanly.
    ========================================================================== */
 
 :root {
-  /* Brand palette (theme.png) */
+  /* Brand palette (docs/brand/theme.png) */
   --brand-ivory: #faf8ed;
   --brand-cream: #e5e2ce;
   --brand-stone: #c6c0ad;

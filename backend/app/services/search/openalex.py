@@ -12,7 +12,7 @@ from app.core.config import get_settings
 from app.db.models import SourceType
 from app.research.state import SourceItem
 from app.services import cache
-from app.services.tavily import normalize_url
+from app.services.search.common import normalize_url
 
 
 class AcademicSearch(Protocol):

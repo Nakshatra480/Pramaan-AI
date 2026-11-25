@@ -10,7 +10,7 @@ const BG: Record<Variant, string> = {
   ink: "bg-[#191A17]",
 };
 
-/** App-icon treatment from theme.png (rounded square, soft depth). */
+/** App-icon treatment from docs/brand/theme.png (rounded square, soft depth). */
 export function PramaanAppIcon({ variant = "ivory", size = 64, className }: { variant?: Variant; size?: number; className?: string }) {
   return (
     <span

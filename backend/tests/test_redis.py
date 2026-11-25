@@ -103,7 +103,7 @@ async def test_cache_errors_never_raise(broken: None) -> None:
 
 
 async def test_tavily_results_are_cached(fake: Any) -> None:
-    from app.services.tavily import TavilyService
+    from app.services.search.tavily import TavilyService
 
     calls = 0
 

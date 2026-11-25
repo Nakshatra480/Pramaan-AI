@@ -397,4 +397,5 @@ export const SOURCE_TYPE_LABEL: Record<Source["type"], string> = {
   documentation: "Documentation",
   report: "Report",
   library: "Library",
+  encyclopedia: "Wikipedia",
 };

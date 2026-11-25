@@ -14,8 +14,8 @@ async def test_warmup_is_cheap_and_touches_nothing(client: AsyncClient, monkeypa
     import app.api.routes.health as health
     import app.research.graph as graph
     import app.services.llm.factory as factory
-    import app.services.tavily as tavily
-    from app.services import academic
+    import app.services.search.tavily as tavily
+    from app.services.search import openalex as academic
 
     monkeypatch.setattr(health, "get_engine", _boom)  # no database
     monkeypatch.setattr(factory, "get_llm", _boom)  # no Groq

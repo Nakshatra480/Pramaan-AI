@@ -11,7 +11,8 @@ import { Menu } from "@/components/ui/Menu";
 import { useResource } from "@/lib/hooks/use-resource";
 import { services } from "@/lib/services";
 import { cn } from "@/lib/utils/cn";
-import { downloadFile, researchToMarkdown, researchToPlainText, slugify } from "@/lib/utils/export";
+import { usePreferences } from "@/components/providers/PreferencesProvider";
+import { answerText, buildExportDocument, downloadBlob, printReport, slugify, toMarkdown } from "@/lib/export";
 import { ListenButton } from "./Narration";
 import { useResearch } from "./ResearchContext";
 import { ShareDialog } from "./ShareDialog";
@@ -28,7 +29,28 @@ export function ResearchActions({ onFollowUp }: { onFollowUp: () => void }) {
 
 
 
-  const md = () => researchToMarkdown(research, sources);
+  const { prefs } = usePreferences();
+  // Only the research itself is exported (no app interface, follow-ups or progress), in the user's citation style.
+  const doc = () => buildExportDocument(research, sources, prefs.citationStyle);
+  const md = () => toMarkdown(doc());
+  const fileName = (ext: string) => `${slugify(research.title)}.${ext}`;
+  const exportPdf = async () => {
+    try {
+      await printReport(doc());
+    } catch (e) {
+      toast({ title: "Couldn't open the print dialog", description: e instanceof Error ? e.message : "Please try again.", tone: "error" });
+    }
+  };
+  const exportDocx = async () => {
+    try {
+      const { toDocx, DOCX_MIME } = await import("@/lib/export/docx");
+      const blob = await toDocx(doc());
+      downloadBlob(fileName("docx"), new Blob([blob], { type: DOCX_MIME }));
+      toast({ title: "Word document exported." });
+    } catch (e) {
+      toast({ title: "Couldn't create the document", description: e instanceof Error ? e.message : "Please try again.", tone: "error" });
+    }
+  };
   const copy = async (text: string, title: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -76,20 +98,16 @@ export function ResearchActions({ onFollowUp }: { onFollowUp: () => void }) {
           </Button>
         }
         items={[
-          { label: "PDF", icon: <Printer />, description: "Print-ready report", onSelect: () => setTimeout(() => window.print(), 120) },
-          { label: "Markdown", icon: <FileCode2 />, description: ".md with numbered sources", onSelect: () => (downloadFile(`${slugify(research.title)}.md`, md()), toast({ title: "Markdown exported." })) },
+          { label: "PDF", icon: <Printer />, description: "Styled report — choose “Save as PDF”", onSelect: () => void exportPdf() },
+          { label: "Word (.docx)", icon: <FileType2 />, description: "Opens in Word, Google Docs or Pages", onSelect: () => void exportDocx() },
           {
-            label: "DOCX",
-            icon: <FileType2 />,
-            description: "Opens in Word or Google Docs",
-            onSelect: () => {
-              const html = `<html><head><meta charset="utf-8"><title>${research.title}</title></head><body><pre style="font-family:Georgia;white-space:pre-wrap">${md().replace(/</g, "&lt;")}</pre></body></html>`;
-              downloadFile(`${slugify(research.title)}.doc`, html, "application/msword");
-              toast({ title: "Document exported." });
-            },
+            label: "Markdown",
+            icon: <FileCode2 />,
+            description: ".md with numbered sources",
+            onSelect: () => (downloadBlob(fileName("md"), new Blob([md()], { type: "text/markdown;charset=utf-8" })), toast({ title: "Markdown exported." })),
           },
           "separator",
-          { label: "Copy answer", icon: <ClipboardCopy />, onSelect: () => copy(researchToPlainText(research), "Answer copied.") },
+          { label: "Copy answer", icon: <ClipboardCopy />, onSelect: () => copy(answerText(doc()), "Answer copied.") },
           { label: "Copy Markdown", icon: <FileText />, onSelect: () => copy(md(), "Markdown copied.") },
         ]}
       />

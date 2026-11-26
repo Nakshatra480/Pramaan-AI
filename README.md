@@ -402,6 +402,7 @@ flowchart TD
 - **One service boundary.** UI code only talks to `services.*`. API and mock adapters share one typed surface, so the app runs fully in **demo mode** without a backend.
 - **Research view** follows the real job state: a branded loading screen while queued/running, the cited report on completion, and a side panel listing every source (a sheet on small screens).
 - **Preferences** (default mode and sources, citation style — numeric, APA, MLA or Chicago — response length, notifications, retention) are stored on the profile and follow the account across devices; theme and motion stay per device.
+- **Exports.** Export → PDF, Word (.docx) or Markdown. All three are built from one document model (`src/lib/export/`) holding only the research — title, question, summary, findings, analysis, limitations and the sources the report cites — never the app's interface, follow-ups or progress. Citations follow the user's citation style (numeric, APA, MLA or Chicago). The PDF is a print-styled page (A4, brand serif headings, sage accents, page numbers) printed from a hidden frame, so "Save as PDF" captures the report alone; the Word file is a real `.docx` with document styles, header and footer, page numbers and linked sources (the `docx` library loads only on export); Markdown has numbered findings and an autolinked source list.
 - **Voice.** The mic button in the research composer dictates a question — live, word by word, with the browser's speech recognition (Chrome, Edge, Safari); browsers without it (Firefox) record a short clip that `POST /speech/transcriptions` transcribes with Groq Whisper (never stored). **Listen** (beside Share and Export) reads the whole report aloud with the browser's speech synthesis: title, summary, findings, analysis, evidence and limitations, without citation markers; a docked player pauses, skips between sections, and changes speed and voice, and the section being read is marked in the report.
 - **Accessibility:** WCAG 2 AA contrast, labelled controls, focus-trapped dialogs, larger touch targets on coarse pointers, reduced-motion support.
 
@@ -576,6 +577,7 @@ These are read at build time and embedded in the bundle, so change them in Verce
 | `src/lib/mock/`, `src/data/` | Demo-mode adapters and seed data |
 | `src/lib/firebase/` | Firebase initialisation (auth, optional App Check and Analytics) |
 | `src/lib/security/`, `src/lib/hosting.ts`, `vercel.json`, `vite.config.ts` | Security headers / CSP, SPA rewrites and 404s, build config |
+| `src/lib/export/` | Report export: shared document model, PDF (print page), Word (.docx) and Markdown renderers |
 | `src/lib/speech/` | Voice input (speech recognition + recording fallback) and report narration |
 | `src/lib/utils/`, `src/lib/hooks/` | Shared logic and React hooks |
 | `src/types/`, `src/vite-env.d.ts` | Shared TypeScript types; typed `import.meta.env` |

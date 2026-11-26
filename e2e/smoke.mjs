@@ -33,6 +33,13 @@ function expect(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
+async function readDownload(dl, encoding = "utf8") {
+  const stream = await dl.createReadStream();
+  const chunks = [];
+  for await (const c of stream) chunks.push(c);
+  return Buffer.concat(chunks).toString(encoding);
+}
+
 async function signIn(page, next = "") {
   await page.goto(`${BASE}/auth/login${next ? `?next=${encodeURIComponent(next)}` : ""}`);
   await page.getByLabel("Email").fill("e2e.user@example.com");
@@ -231,6 +238,43 @@ await test("Listen narrates the report beside Share and Export", async (page, ct
   expect(n === (await page.evaluate(() => window.__spoken.length)), "pause stops speech");
   await page.getByRole("button", { name: "Stop narration" }).click();
   expect((await page.getByRole("region", { name: "Report narration" }).count()) === 0, "player closes");
+});
+
+await test("exports: styled PDF, Word and Markdown hold only the report", async (page) => {
+  await signIn(page, "/research/r-glp1-cardio");
+  const exportMenu = page.getByRole("button", { name: "Export" });
+  await exportMenu.waitFor({ timeout: 15000 });
+  const title = (await page.locator("h1").first().innerText()).trim();
+  const appOnly = /Research again|Follow-up question|Ask follow-up|Share|Listen to this report|verified claims/;
+
+  // Markdown
+  await exportMenu.click();
+  let [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("menuitem", { name: /^Markdown/ }).click()]);
+  const md = await readDownload(dl);
+  expect(dl.suggestedFilename().endsWith(".md"), "markdown file name");
+  expect(md.startsWith(`# ${title.slice(0, 20)}`) && /## Executive summary/.test(md) && /## Key findings/.test(md) && /## Sources/.test(md), "markdown sections");
+  expect(!appOnly.test(md), "markdown has no app interface text");
+
+  // Word: a real .docx (zip with word/document.xml)
+  await exportMenu.click();
+  [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("menuitem", { name: /Word/ }).click()]);
+  const docx = await readDownload(dl, "binary");
+  expect(dl.suggestedFilename().endsWith(".docx") && docx.slice(0, 2) === "PK" && docx.includes("word/document.xml"), "a real .docx package");
+
+  // PDF: printed from a frame that holds only the report
+  await exportMenu.click();
+  await page.getByRole("menuitem", { name: /PDF/ }).click();
+  const frame = page.locator('iframe[title="Report for printing"]');
+  await frame.waitFor({ state: "attached", timeout: 10000 });
+  const html = await frame.evaluate((f) => f.srcdoc);
+  expect(html.includes(title.replace(/&/g, "&amp;")) && html.includes("Executive summary") && html.includes('class="sources"'), "print document has the report");
+  expect(!/Research again|Follow-up question|Ask follow-up|Listen to this report/.test(html), "print document has no app interface");
+  if (process.env.EXPORT_DIR) {
+    const fs = await import("node:fs");
+    fs.writeFileSync(`${process.env.EXPORT_DIR}/report.md`, md);
+    fs.writeFileSync(`${process.env.EXPORT_DIR}/report.docx`, Buffer.from(docx, "binary"));
+    fs.writeFileSync(`${process.env.EXPORT_DIR}/report.html`, html);
+  }
 });
 
 await test("follow-ups: questions get a sourced answer, change requests a separate revised report", async (page) => {

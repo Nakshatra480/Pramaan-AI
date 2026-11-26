@@ -1,0 +1,38 @@
+# Pramaan AI on a single Vultr server: Caddy serves the web app over HTTPS and proxies the API.
+# Lives at /opt/pramaan on the server (see deploy/vultr/deploy.sh). Data stays on Neon, Supabase and Upstash.
+name: pramaan
+
+services:
+  api:
+    build: ./backend
+    image: pramaan-api:latest
+    env_file: ./api.env
+    restart: unless-stopped
+    expose: ["8000"]
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  web:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in deploy/vultr/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./www:/srv/www:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+volumes:
+  caddy_data:
+  caddy_config:

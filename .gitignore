@@ -53,3 +53,8 @@ firebase-debug.log
 # AI-assistant instruction files — kept out of the repo
 AGENTS.md
 CLAUDE.md
+
+# Vultr deployment secrets / build settings (deploy/vultr/README)
+deploy/vultr/api.env
+deploy/vultr/web.env
+deploy/vultr/.env

@@ -9,3 +9,4 @@ render.yaml
 firebase.json
 .firebaserc
 tsconfig.tsbuildinfo
+deploy/

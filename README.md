@@ -2,7 +2,7 @@
 
 **Research, with evidence.** Ask a question and Pramaan's research agents search the web, Wikipedia, scholarly papers and your own documents, read the sources, verify every claim against the evidence and write a cited report. Every citation points to a real source; models never invent references.
 
-**Live app:** [pramaan-ai-seven.vercel.app](https://pramaan-ai-seven.vercel.app)
+**Live app:** [pramaan-207-148-12-93.sslip.io](https://pramaan-207-148-12-93.sslip.io)
 
 ## What you can do
 
@@ -65,7 +65,7 @@ flowchart TD
 | **Neon** | Managed PostgreSQL + pgvector |
 | **Supabase Storage** | Uploaded files (S3-compatible) |
 | **Upstash Redis** | Caching, rate limits and live progress (optional) |
-| **Vercel** / **Render** | Hosting for the web app / the API |
+| **Vultr** | Hosting: one server running the web app and API in Docker behind Caddy (automatic HTTPS) |
 
 ## Run it locally
 
@@ -91,6 +91,8 @@ cp .env.example .env.local                        # Firebase web config + VITE_A
 npm run dev
 ```
 
+**Deploy** (Vultr): `deploy/vultr/deploy.sh <server-ip>` builds the web app, uploads it with the API, and restarts the containers (`--migrate` also runs database migrations). It reads two gitignored files, `deploy/vultr/web.env` and `deploy/vultr/api.env`.
+
 **Checks:** `npm run lint && npm run typecheck && npm test && npm run build` for the web app, and `ruff`, `mypy` and `pytest` in `backend/`.
 
 ## Project layout
@@ -99,5 +101,5 @@ npm run dev
 src/        React app: routes, components, services, export and voice
 backend/    FastAPI API, LangGraph research agents, database models and migrations
 tests/      Frontend unit tests          e2e/   Browser test suites
-public/     Static assets                render.yaml · vercel.json   Deployment config
+public/     Static assets                deploy/vultr/   Server setup, Docker Compose, Caddy, deploy script
 ```

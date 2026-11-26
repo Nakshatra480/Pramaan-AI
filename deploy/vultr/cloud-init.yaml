@@ -1,0 +1,30 @@
+#cloud-config
+# Bootstraps a fresh Ubuntu 24.04 Vultr server for Pramaan: Docker + Compose, a non-root "deploy" user,
+# key-only SSH, a firewall (22/80/443), 2 GB swap and automatic security updates.
+package_update: true
+package_upgrade: true
+packages: [docker.io, docker-compose-v2, rsync, ufw, fail2ban, unattended-upgrades]
+swap:
+  filename: /swapfile
+  size: 2G
+users:
+  - default
+  - name: deploy
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    ssh_authorized_keys:
+      - __SSH_PUBLIC_KEY__
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-pramaan.conf
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin no
+runcmd:
+  - usermod -aG docker deploy
+  - systemctl enable --now docker
+  - mkdir -p /opt/pramaan && chown deploy:deploy /opt/pramaan
+  - ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp && ufw allow 443/udp && ufw --force enable
+  - systemctl enable --now fail2ban
+  - systemctl restart ssh
+  - touch /var/lib/pramaan-ready

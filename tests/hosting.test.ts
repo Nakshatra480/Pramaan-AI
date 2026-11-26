@@ -71,3 +71,23 @@ describe("client routes and real 404s", () => {
     expect(sourcePattern("/").test("/x")).toBe(false);
   });
 });
+
+describe("self-hosting (Vultr) Caddy config", () => {
+  it("is generated from vercel.json and the security headers (run `npm run caddyfile` after changing either)", async () => {
+    const { caddyfile } = await import("@/lib/hosting");
+    const committed = readFileSync(new URL("../deploy/vultr/Caddyfile", import.meta.url), "utf8");
+    expect(committed).toBe(caddyfile(vercel.rewrites, staticHeaders()));
+  });
+  it("routes the same client paths to index.html as Vercel", async () => {
+    const { caddyfile } = await import("@/lib/hosting");
+    const re = new RegExp(caddyfile(vercel.rewrites, staticHeaders()).match(/path_regexp app `(.+)`/)![1]);
+    for (const path of ["/", "/pricing", "/research/abc-123", "/research/new", "/shared/tok", "/settings/profile/x", "/auth/login"]) {
+      expect(re.test(path), path).toBe(true);
+      expect(Boolean(matchRewrite(vercel.rewrites, path)), path).toBe(true);
+    }
+    for (const path of ["/nope", "/about", "/shared/a/b", "/assets/index.js", "/researchers"]) {
+      expect(re.test(path), path).toBe(false);
+      expect(Boolean(matchRewrite(vercel.rewrites, path)), path).toBe(false);
+    }
+  });
+});

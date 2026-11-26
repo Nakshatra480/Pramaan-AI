@@ -1,6 +1,5 @@
 # Vercel deploys only the Vite frontend. Keep the backend, its env files and local tooling out of uploads.
 backend/
-docs/
 tests/
 e2e/
 .env*

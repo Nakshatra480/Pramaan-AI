@@ -14,7 +14,7 @@ interface PramaanMarkProps {
 
 /**
  * The Pramaan mark: a serif P whose stem becomes a leaf (knowledge / evidence),
- * with a small four-point sparkle (verification). Recreated from docs/brand/theme.png.
+ * with a small four-point sparkle (verification).
  */
 export function PramaanMark({ size = 32, tone = "default", className, sparkle = true, title }: PramaanMarkProps) {
   const id = useId().replace(/:/g, "");

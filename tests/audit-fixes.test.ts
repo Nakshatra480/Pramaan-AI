@@ -151,3 +151,17 @@ describe("M-11 security headers", () => {
     expect(keys["Cross-Origin-Opener-Policy"]).toBe("same-origin-allow-popups");
   });
 });
+
+describe("Research with this", () => {
+  it("builds from the document and stays in its project", async () => {
+    const { researchWithDocumentHref } = await import("@/lib/utils/library");
+    const doc = { id: "d1", title: "Getting Started", projectIds: ["p1"] };
+    const url = new URL(researchWithDocumentHref(doc), "https://x");
+    expect(url.pathname).toBe("/research/new");
+    expect(url.searchParams.get("doc")).toBe("d1");
+    expect(url.searchParams.get("project")).toBe("p1"); // its only project
+    expect(url.searchParams.get("q")).toContain("Getting Started");
+    expect(new URL(researchWithDocumentHref({ ...doc, projectIds: ["p1", "p2"] }), "https://x").searchParams.get("project")).toBeNull(); // ambiguous: ask
+    expect(new URL(researchWithDocumentHref({ ...doc, projectIds: ["p1", "p2"] }, "p2"), "https://x").searchParams.get("project")).toBe("p2"); // the one being browsed
+  });
+});

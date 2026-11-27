@@ -272,10 +272,10 @@ async def test_unreachable_website_fails_with_a_clear_message(client: AsyncClien
     from app.core.exceptions import ValidationFailed
     from app.services.documents import processor
 
-    async def unreachable(url: str) -> tuple[str, str]:
+    async def unreachable(url: str) -> list[object]:
         raise ValidationFailed("That website couldn't be read.", code="URL_UNREACHABLE")
 
-    monkeypatch.setattr(processor, "fetch_page", unreachable)
+    monkeypatch.setattr(processor, "fetch_site", unreachable)
     r = await client.post("/api/v1/library/urls", headers=ALICE, json={"url": "https://example.com/missing"})
     await get_job_runner().drain()
     d = (await client.get(f"/api/v1/library/{r.json()['id']}", headers=ALICE)).json()

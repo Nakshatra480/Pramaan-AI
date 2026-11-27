@@ -163,3 +163,73 @@ async def test_wikipedia_works_without_a_key() -> None:
     seen: list[httpx.Request] = []
     results = await WikipediaService(transport=_wiki_transport(seen)).search("solid-state battery", max_results=2)
     assert results and "authorization" not in seen[0].headers
+
+
+# ------------------------------------------------------------------ "Add website": the page and its sub-pages
+
+HUB = """<html><head><title>Getting Started</title></head><body><nav><a href="/docs/other/">Other docs</a></nav>
+<main><h1>Getting Started</h1><div class="lead">Start here to learn the fundamentals, try a local setup and find upgrade guidance.</div>
+<div class="card"><h5><a href="/docs/start/intro/">Introduction</a></h5><p>Learn what event streaming is and how the system works.</p></div>
+<div class="card"><h5><a href="/docs/start/quickstart/">Quick Start</a></h5><p>Run it locally, create a topic and produce events.</p></div>
+<div class="card"><h5><a href="/docs/start/private/">Internal</a></h5><p>Pages the site asks crawlers not to read at all.</p></div>
+<p>See <a href="https://elsewhere.example/x">another site</a> and <a href="/docs/start/">this page</a>
+and <a href="/docs/start/guide.pdf">a PDF</a>.</p></main></body></html>"""
+
+
+def _subpage(title: str) -> str:
+    body = "".join(f"<p>{title} paragraph {i} explains one more detail of the system in plain words for readers.</p>" for i in range(6))
+    return f"<html><head><title>{title}</title></head><body><article><h1>{title}</h1>{body}</article></body></html>"
+
+
+def _site(seen: list[str]) -> httpx.MockTransport:
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: *\nDisallow: /docs/start/private/\n")
+        if request.url.path == "/docs/start/":
+            return httpx.Response(200, headers={"content-type": "text/html"}, text=HUB)
+        if request.url.path == "/docs/start/intro/":
+            return httpx.Response(200, headers={"content-type": "text/html"}, text=_subpage("Introduction"))
+        if request.url.path == "/docs/start/quickstart/":
+            return httpx.Response(200, headers={"content-type": "text/html"}, text=_subpage("Quick Start"))
+        return httpx.Response(404)
+
+    return httpx.MockTransport(handler)
+
+
+async def test_a_hub_page_is_read_with_its_sub_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services.content.fetch import child_links, fetch_site
+
+    async def public(host: str) -> None:
+        return None
+
+    monkeypatch.setattr(fetch_mod, "_assert_public_host", public)
+    seen: list[str] = []
+    pages = await fetch_site("https://docs.example/docs/start/", transport=_site(seen))
+    assert [p.title for p in pages] == ["Getting Started", "Introduction", "Quick Start"]
+    hub = pages[0].text
+    assert "Start here to learn the fundamentals" in hub  # text directly in a <div>
+    assert "## Introduction\n\nLearn what event streaming is" in hub  # headings kept
+    assert "/docs/start/private/" not in seen  # robots.txt respected
+    assert not any(p in seen for p in ("/docs/other/", "/x", "/docs/start/guide.pdf"))  # nav, other sites, files: never followed
+    links = ["https://docs.example/docs/start/a/", "https://docs.example/docs/b/", "https://evil.example/docs/start/c/", "https://docs.example/docs/start/"]
+    assert child_links("https://docs.example/docs/start/", links) == ["https://docs.example/docs/start/a/"]
+
+
+async def test_an_article_page_is_not_crawled(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services.content.fetch import fetch_site
+
+    async def public(host: str) -> None:
+        return None
+
+    monkeypatch.setattr(fetch_mod, "_assert_public_host", public)
+    long = "".join(f"<p>Paragraph {i} of a long article, with enough distinct words to be read as a real article body by the parser.</p>" for i in range(80))
+    article = f"<html><body><article><h1>Essay</h1>{long}<p><a href='/blog/essay/part-2/'>Part two</a></p></article></body></html>"
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        return httpx.Response(200, headers={"content-type": "text/html"}, text=article)
+
+    pages = await fetch_site("https://blog.example/blog/essay/", transport=httpx.MockTransport(handler))
+    assert len(pages) == 1 and seen == ["/blog/essay/"]

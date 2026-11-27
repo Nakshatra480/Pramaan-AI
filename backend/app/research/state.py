@@ -106,6 +106,7 @@ class ResearchState(TypedDict, total=False):
     response_length: str  # user preference: concise | balanced | comprehensive
     prior_research: list[str]
     allowed_document_ids: list[uuid.UUID]
+    focus_document_ids: list[uuid.UUID]  # "Research with this": read these in full and use them first
 
     research_plan: ResearchPlan
     subqueries: list[str]
@@ -131,14 +132,14 @@ class ResearchState(TypedDict, total=False):
 MODE_LIMITS: dict[ResearchMode, dict[str, int]] = {
     ResearchMode.quick: {
         "cited": 10, "subqueries": 2, "web": 7, "academic": 4, "academic_queries": 1, "wikipedia": 2, "wikipedia_queries": 1,
-        "read": 8, "chunks": 6, "evidence": 18, "max_sources": 12, "claims": 8, "corroborate": 2,
+        "read": 8, "chunks": 6, "focus_chunks": 24, "evidence": 18, "max_sources": 12, "claims": 8, "corroborate": 2,
     },
     ResearchMode.standard: {
         "cited": 35, "subqueries": 4, "web": 12, "academic": 8, "academic_queries": 2, "wikipedia": 4, "wikipedia_queries": 2,
-        "read": 22, "chunks": 10, "evidence": 56, "max_sources": 42, "claims": 20, "corroborate": 4,
+        "read": 22, "chunks": 10, "focus_chunks": 48, "evidence": 56, "max_sources": 42, "claims": 20, "corroborate": 4,
     },
     ResearchMode.deep: {
         "cited": 50, "subqueries": 6, "web": 14, "academic": 10, "academic_queries": 3, "wikipedia": 6, "wikipedia_queries": 3,
-        "read": 30, "chunks": 16, "evidence": 80, "max_sources": 60, "claims": 28, "corroborate": 5,
+        "read": 30, "chunks": 16, "focus_chunks": 80, "evidence": 80, "max_sources": 60, "claims": 28, "corroborate": 5,
     },
 }  # fmt: skip

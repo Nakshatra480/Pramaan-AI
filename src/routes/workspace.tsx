@@ -49,7 +49,7 @@ const param = (v: string | null) => v ?? undefined;
 export function NewResearch() {
   usePageTitle("New research");
   const [search] = useSearchParams();
-  return <Dashboard initialQuery={param(search.get("q"))} initialProject={param(search.get("project"))} />;
+  return <Dashboard initialQuery={param(search.get("q"))} initialProject={param(search.get("project"))} focusDocuments={search.getAll("doc").slice(0, 10)} />;
 }
 
 export function Research() {
@@ -80,7 +80,8 @@ export function Library() {
 export function Document() {
   usePageTitle("Document");
   const { documentId = "" } = useParams();
-  return <DocumentViewer key={documentId} documentId={documentId} />;
+  const [search] = useSearchParams();
+  return <DocumentViewer key={documentId} documentId={documentId} projectId={search.get("project")} />;
 }
 
 export function Projects() {

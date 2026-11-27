@@ -134,6 +134,7 @@ export interface ResearchSummaryDTO {
   errorCode: string | null;
   parentId?: string | null;
   revisionInstructions?: string | null;
+  documentIds?: string[];
 }
 
 /** A report block as the API sends it: every field present, unused ones null. */

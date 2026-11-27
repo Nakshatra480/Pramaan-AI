@@ -346,6 +346,8 @@ class ResearchSession(JobLease, Base):
     # is never modified; the revision is a separate session that points back to it.
     parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("research_sessions.id", ondelete="SET NULL"), index=True)
     revision_instructions: Mapped[str | None] = mapped_column(Text)
+    # "Research with this": documents the report is built from first (their passages take priority as evidence).
+    focus_document_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID(as_uuid=True)), default=list, server_default="{}")
     saved: Mapped[bool] = mapped_column(Boolean, default=False)
     visibility: Mapped[Visibility] = mapped_column(_enum(Visibility, "visibility"), default=Visibility.private)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { ChevronLeft, Download, FolderPlus, RotateCcw, Search, Trash2 } from "lucide-react";
+import { ChevronLeft, Download, FolderPlus, RefreshCw, RotateCcw, Search, Trash2 } from "lucide-react";
 import { Link } from "@/components/ui/Link";
 import { useRouter } from "@/lib/navigation";
 import { useState } from "react";
@@ -17,8 +17,9 @@ import { AddToProjectDialog } from "./AddToProjectDialog";
 import { DeleteDocumentDialog } from "./DeleteDocumentDialog";
 import { KIND_META } from "./DocumentKind";
 import { IndexingProgress } from "./IndexingProgress";
+import { researchWithDocumentHref } from "@/lib/utils/library";
 
-export function DocumentViewer({ documentId }: { documentId: string }) {
+export function DocumentViewer({ documentId, projectId = null }: { documentId: string; projectId?: string | null }) {
   const router = useRouter();
   const toast = useToast();
   const { data: doc, loading } = useResource(() => services.library.get(documentId), [documentId]);
@@ -91,7 +92,7 @@ export function DocumentViewer({ documentId }: { documentId: string }) {
             <Button
               leading={<Search className="size-4" />}
               disabled={doc.status !== "ready"}
-              onClick={() => router.push(`/research/new?q=${encodeURIComponent(`Summarise the key findings of “${doc.title}”`)}`)}
+              onClick={() => router.push(researchWithDocumentHref(doc, projectId && doc.projectIds.includes(projectId) ? projectId : null))}
             >
               Research with this
             </Button>
@@ -101,7 +102,7 @@ export function DocumentViewer({ documentId }: { documentId: string }) {
             <Button
               variant="ghost"
               leading={<Download className="size-4" />}
-              disabled={doc.kind === "website" && services.mode === "api"}
+              className={doc.kind === "website" && services.mode === "api" ? "hidden" : undefined}
               onClick={async () => {
                 try {
                   const { blob, filename } = await services.library.download(doc);
@@ -119,6 +120,22 @@ export function DocumentViewer({ documentId }: { documentId: string }) {
             >
               Download
             </Button>
+            {doc.kind === "website" && doc.status === "ready" && (
+              <Button
+                variant="ghost"
+                leading={<RefreshCw className="size-4" />}
+                onClick={async () => {
+                  try {
+                    await services.library.retry(doc.id);
+                    toast({ title: "Refreshing this page", description: "Pramaan is reading the page and the pages it links to again." });
+                  } catch (e) {
+                    toast({ title: "Couldn't refresh this page", description: e instanceof Error ? e.message : undefined, tone: "error" });
+                  }
+                }}
+              >
+                Refresh page
+              </Button>
+            )}
             <Button variant="ghost" className="text-danger" leading={<Trash2 className="size-4" />} onClick={() => setDeleteOpen(true)}>
               Delete
             </Button>

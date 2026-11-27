@@ -170,7 +170,9 @@ class LibraryService:
 
     async def retry(self, user: User, document_id: uuid.UUID) -> DocumentOut:
         doc = await require_document(self.db, document_id, user, write=True)
-        if doc.status != DocumentStatus.failed and not semantic_pending(doc):
+        # A website can always be read again ("Refresh"): pages change, and older imports kept less of them.
+        refresh = doc.kind == DocumentKind.website and doc.status == DocumentStatus.ready
+        if doc.status != DocumentStatus.failed and not semantic_pending(doc) and not refresh:
             raise ValidationFailed("Only failed documents, or documents indexed for keyword search only, can be retried.", code="DOCUMENT_NOT_FAILED")
         doc.status, doc.error, doc.error_code = DocumentStatus.uploading, None, None
         doc.attempts = 0

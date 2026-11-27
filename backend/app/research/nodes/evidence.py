@@ -39,7 +39,32 @@ def source_cap(total: int, n_sources: int) -> int:
 Candidate = tuple[str, str, "str | None", Any]
 
 
-def select_evidence(scored: list[tuple[float, Candidate]], cap: int, *, breadth_floor: float, max_sources: int | None = None) -> list[EvidenceItem]:
+def select_evidence(
+    scored: list[tuple[float, Candidate]],
+    cap: int,
+    *,
+    breadth_floor: float,
+    max_sources: int | None = None,
+    priority: set[str] | None = None,
+    priority_share: float = 1.0,
+) -> list[EvidenceItem]:
+    """See `_select`. With `priority` (the documents a research is built from), their most relevant passages fill
+    up to `priority_share` of the budget first — regardless of the per-source cap — and other sources the rest."""
+    if not priority:
+        return _number(_select(scored, cap, breadth_floor=breadth_floor, max_sources=max_sources))
+    first = [x for x in scored if x[1][0] in priority and x[0] > 0][: max(1, int(cap * priority_share))]
+    rest = [x for x in scored if x[1][0] not in priority]
+    return _number(first + _select(rest, cap - len(first), breadth_floor=breadth_floor, max_sources=max_sources))
+
+
+def _number(chosen: list[tuple[float, Candidate]]) -> list[EvidenceItem]:
+    return [
+        EvidenceItem(id=f"E{n + 1}", source_key=key, passage=passage, relevance=round(max(0.0, min(1.0, score)), 3), location=loc, chunk_id=chunk_id)
+        for n, (score, (key, passage, loc, chunk_id)) in enumerate(chosen)
+    ]
+
+
+def _select(scored: list[tuple[float, Candidate]], cap: int, *, breadth_floor: float, max_sources: int | None = None) -> list[tuple[float, Candidate]]:
     """Breadth first, then depth: every relevant source contributes its best passage before any source contributes
     a second, so the evidence (and the report's citations) span many sources instead of a few long pages.
     The remaining budget goes to the next-best passages, with a per-source cap. At most `max_sources` distinct
@@ -67,10 +92,7 @@ def select_evidence(scored: list[tuple[float, Candidate]], cap: int, *, breadth_
         per_source[c[0]] = per_source.get(c[0], 0) + 1
         chosen.append((score, c))
     chosen.sort(key=lambda x: -x[0])
-    return [
-        EvidenceItem(id=f"E{n + 1}", source_key=key, passage=passage, relevance=round(max(0.0, min(1.0, score)), 3), location=loc, chunk_id=chunk_id)
-        for n, (score, (key, passage, loc, chunk_id)) in enumerate(chosen)
-    ]
+    return chosen
 
 
 async def _empty() -> list[list[float]]:
@@ -180,7 +202,10 @@ async def evidence(state: ResearchState, deps: ResearchDeps) -> dict[str, Any]:
         page = sorted(s.passages, key=lambda p: -overlap(qt, terms(p)))[:per_page] if s.passages else []
         snippet = _windows(s.snippet)[: 2 if page else 6]
         candidates += [(s.key, w, None, None) for w in dict.fromkeys([*page, *snippet])]
-    private = [(f"doc:{h.document_id}", w, f"p. {h.page}" if h.page else None, h.chunk_id) for h in hits for w in _windows(h.content)[:3]]
+    focus = {f"doc:{d}" for d in state.get("focus_document_ids") or []}
+    # A document the research is built from is read more closely (more windows per passage), within a fixed total.
+    per_chunk = max(2, min(6, 300 // max(1, len(hits)))) if focus else 3
+    private = [(f"doc:{h.document_id}", w, f"p. {h.page}" if h.page else None, h.chunk_id) for h in hits for w in _windows(h.content)[:per_chunk]]
     # Sources are in relevance order, so a cut drops the weakest public passages — never the user's own documents.
     candidates = candidates[: max(0, MAX_CANDIDATES - len(private))] + private
 
@@ -209,7 +234,15 @@ async def evidence(state: ResearchState, deps: ResearchDeps) -> dict[str, Any]:
         (((0.65 * sem[i] + 0.35 * overlap(qt, terms(c[1]))) if semantic else overlap(qt, terms(c[1])), c) for i, c in enumerate(candidates)),
         key=lambda x: -x[0],
     )
-    items = select_evidence(scored, limits["evidence"], breadth_floor=BREADTH_FLOOR if semantic else BREADTH_FLOOR_LEXICAL, max_sources=limits["max_sources"])
+    items = select_evidence(
+        scored,
+        limits["evidence"],
+        breadth_floor=BREADTH_FLOOR if semantic else BREADTH_FLOOR_LEXICAL,
+        max_sources=limits["max_sources"],
+        priority=focus,
+        # Built from the user's documents: they fill the evidence first; other sources (if any) only supplement.
+        priority_share=0.7 if any(c[0] not in focus for c in candidates) else 1.0,
+    )
 
     for s in unique.values():
         rel = max((e.relevance for e in items if e.source_key == s.key), default=0.0)

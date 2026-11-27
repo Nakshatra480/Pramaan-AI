@@ -15,12 +15,12 @@ import uuid
 from datetime import UTC, datetime
 from functools import lru_cache
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.core.config import get_settings
 from app.core.logging import log, research_id_var
 from app.db.database import get_sessionmaker
-from app.db.models import ActivityKind, Document, DocumentStatus, ProjectDocument, ProjectMember, ResearchSession, ResearchStatus
+from app.db.models import ActivityKind, Document, DocumentChunk, DocumentStatus, ProjectDocument, ProjectMember, ResearchSession, ResearchStatus
 from app.repositories.projects import ActivityRepository
 from app.repositories.research import ResearchRepository
 from app.research.deps import ResearchDeps
@@ -99,6 +99,7 @@ def default_deps(research_id: uuid.UUID) -> ResearchDeps:
         retrieve=_retrieve,
         reporter=ProgressReporter(research_id),
         persist_sources=_persist_sources,
+        read_documents=_read_documents,
         wikipedia=_wikipedia(),
         reader=_reader(),
         images=HttpImageVerifier(),
@@ -143,7 +144,50 @@ async def _context(research: ResearchSession) -> tuple[str | None, list[uuid.UUI
                         )
                     ).all()
                 )
+        if research.focus_document_ids:
+            # "Research with this": exactly the chosen documents (still only those this user may read).
+            shared = select(ProjectDocument.document_id).join(ProjectMember, ProjectMember.project_id == ProjectDocument.project_id)
+            readable = (
+                await db.scalars(
+                    select(Document.id).where(
+                        Document.id.in_(research.focus_document_ids),
+                        ready,
+                        or_(Document.user_id == research.user_id, Document.id.in_(shared.where(ProjectMember.user_id == research.user_id))),
+                    )
+                )
+            ).all()
+            doc_ids = set(readable)
         return instructions, sorted(doc_ids), prior
+
+
+async def _focus_note(document_ids: list[uuid.UUID]) -> str:
+    """Guidance for the planner and writer when research is built from the user's own documents."""
+    async with get_sessionmaker()() as db:
+        titles = list((await db.scalars(select(Document.title).where(Document.id.in_(document_ids)))).all())
+    names = ", ".join(f"“{t}”" for t in titles[:5]) or "the selected documents"
+    return (
+        f"This research is built from the user's document(s) {names}. Present what these documents say first and organise the paper "
+        "around their content; use web or scholarly sources only to add context or corroboration, never to replace them."
+    )
+
+
+async def _read_documents(doc_ids: list[uuid.UUID], limit: int) -> list[ChunkHit]:
+    """The documents' passages in reading order (up to `limit` + 1), for research built from those documents."""
+    async with get_sessionmaker()() as db:
+        rows = (
+            await db.execute(
+                select(DocumentChunk.id, DocumentChunk.document_id, Document.title, DocumentChunk.content, DocumentChunk.meta)
+                .join(Document, Document.id == DocumentChunk.document_id)
+                .where(DocumentChunk.document_id.in_(doc_ids))
+                .order_by(DocumentChunk.document_id, DocumentChunk.chunk_index)
+                .limit(limit + 1)
+            )
+        ).all()
+    # One more than asked for: the caller can tell "fits" from "too long to read in full".
+    return [
+        ChunkHit(chunk_id=r[0], document_id=r[1], document_title=r[2], content=r[3], score=1.0 - i / (2 * max(1, len(rows))), page=(r[4] or {}).get("page"))
+        for i, r in enumerate(rows)
+    ]
 
 
 async def _response_length(user_id: uuid.UUID) -> str:
@@ -203,6 +247,10 @@ async def run_research(research_id: uuid.UUID, owner: str | None = None) -> None
             await db.commit()
 
         instructions, doc_ids, prior = await _context(research)
+        focus = [d for d in research.focus_document_ids if d in set(doc_ids)]
+        if focus:
+            note = await _focus_note(focus)
+            instructions = f"{note}\n\n{instructions}" if instructions else note
         length = await _response_length(research.user_id)
         if research.revision_instructions:
             # A revision (asked as a follow-up): same question, regenerated with the user's requested changes.
@@ -219,6 +267,7 @@ async def run_research(research_id: uuid.UUID, owner: str | None = None) -> None
             "response_length": length,
             "prior_research": prior,
             "allowed_document_ids": doc_ids,
+            "focus_document_ids": focus,
             "sources": [],
             "retrieved_chunks": [],
             "errors": [],

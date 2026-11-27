@@ -15,6 +15,7 @@ import type { LibraryDocument } from "@/types";
 import { DeleteDocumentDialog } from "./DeleteDocumentDialog";
 import { DocumentThumb, KIND_META } from "./DocumentKind";
 import { IndexingProgress } from "./IndexingProgress";
+import { researchWithDocumentHref } from "@/lib/utils/library";
 
 interface Props {
   doc: LibraryDocument;
@@ -44,7 +45,7 @@ export function DocumentCard({ doc, onAddToProject, projectId }: Props) {
       <div className="flex items-start gap-3">
         <DocumentThumb kind={doc.kind} />
         <div className="min-w-0 flex-1">
-          <Link href={`/library/${doc.id}`} className="block text-[14px] font-medium leading-snug text-ink line-clamp-2 after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none">
+          <Link href={projectId ? `/library/${doc.id}?project=${projectId}` : `/library/${doc.id}`} className="block text-[14px] font-medium leading-snug text-ink line-clamp-2 after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none">
             {doc.title}
           </Link>
           <p className="mt-1 text-[12px] text-ink-faint truncate">{doc.filename}</p>
@@ -58,8 +59,8 @@ export function DocumentCard({ doc, onAddToProject, projectId }: Props) {
               </IconButton>
             }
             items={[
-              { label: "Preview", icon: <Eye />, onSelect: () => router.push(`/library/${doc.id}`) },
-              { label: "Research with this", icon: <Search />, disabled: doc.status !== "ready", onSelect: () => router.push(`/research/new?q=${encodeURIComponent(`Summarise the key findings of “${doc.title}”`)}`) },
+              { label: "Preview", icon: <Eye />, onSelect: () => router.push(projectId ? `/library/${doc.id}?project=${projectId}` : `/library/${doc.id}`) },
+              { label: "Research with this", icon: <Search />, disabled: doc.status !== "ready", onSelect: () => router.push(researchWithDocumentHref(doc, projectId)) },
               { label: "Add to project", icon: <FolderPlus />, onSelect: () => onAddToProject?.(doc) },
               "separator",
               projectId

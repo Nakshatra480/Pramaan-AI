@@ -172,6 +172,8 @@ export interface Research {
   /** On a revision: the research it regenerates, and the changes that were asked for. */
   parentId?: string | null;
   revisionInstructions?: string | null;
+  /** Documents the report was built from first ("Research with this"). */
+  documentIds?: string[];
 }
 
 export interface ResearchInput {
@@ -179,6 +181,8 @@ export interface ResearchInput {
   mode: ResearchMode;
   channels: SourceChannel[];
   projectId: string | null;
+  /** "Research with this": build the report from these documents first. */
+  documentIds?: string[];
 }
 
 /** Streamed progress event (future: SSE from FastAPI/LangGraph). */

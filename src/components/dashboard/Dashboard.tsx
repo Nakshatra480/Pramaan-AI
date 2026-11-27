@@ -11,7 +11,7 @@ import { useResource } from "@/lib/hooks/use-resource";
 import { services } from "@/lib/services";
 import { greeting } from "@/lib/utils/format";
 
-export function Dashboard({ initialQuery, initialProject }: { initialQuery?: string; initialProject?: string } = {}) {
+export function Dashboard({ initialQuery, initialProject, focusDocuments = [] }: { initialQuery?: string; initialProject?: string; focusDocuments?: string[] } = {}) {
   const { user } = useAuth();
   const { data: research, loading } = useResource(() => services.research.list(), []);
   const { data: projects } = useResource(() => services.projects.list(), []);
@@ -40,7 +40,7 @@ export function Dashboard({ initialQuery, initialProject }: { initialQuery?: str
           </h1>
         </SlideUp>
         <SlideUp delay={0.08} className="mt-8 sm:mt-10">
-          <ResearchComposer key={example} size="hero" initialQuery={example} projectId={initialProject ?? null} autoFocus />
+          <ResearchComposer key={example} size="hero" initialQuery={example} projectId={initialProject ?? null} documentIds={example === initialQuery ? focusDocuments : []} autoFocus />
         </SlideUp>
         <SlideUp delay={0.14} className="mt-2 flex flex-wrap gap-2">
           {EXAMPLE_QUESTIONS.slice(0, 3).map((q) => (

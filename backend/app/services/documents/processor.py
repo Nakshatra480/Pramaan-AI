@@ -22,7 +22,7 @@ from app.db.database import get_sessionmaker
 from app.db.models import ActivityKind, Document, DocumentChunk, DocumentKind, DocumentStatus, ProjectDocument
 from app.repositories.library import LibraryRepository
 from app.repositories.projects import ActivityRepository
-from app.services.content.fetch import fetch_page
+from app.services.content.fetch import MAX_SUBPAGES, fetch_site
 from app.services.documents.chunking import chunk_document
 from app.services.documents.extract import ExtractedDocument, ExtractedPage, ExtractionError, extract, normalize
 from app.services.embeddings import EmbeddingService
@@ -178,12 +178,17 @@ class DocumentProcessor:
 
     async def _extract(self, doc: Document) -> ExtractedDocument:
         if doc.kind == DocumentKind.website:
-            title, text = await fetch_page(str(doc.meta.get("url", "")))
+            pages = await fetch_site(str(doc.meta.get("url", "")))
+            title = pages[0].title
             if title:
-                doc.title = title
-            if len(text) < 200:
+                doc.title = title[:300]
+            parts = [ExtractedPage(normalize(p.text if i == 0 else f"# {p.title}\n\n{p.text}" if p.title else p.text)) for i, p in enumerate(pages)]
+            text_bytes = sum(len(p.text.encode()) for p in parts)
+            if text_bytes < 200:
                 raise ExtractionError("That page doesn't contain enough readable text.")
-            return ExtractedDocument([ExtractedPage(normalize(text))], title=title or None)
+            doc.size_bytes = text_bytes  # the text that was read (there's no file)
+            doc.meta = {**(doc.meta or {}), "pages": len(pages), "page_urls": [p.url for p in pages[: MAX_SUBPAGES + 1]]}
+            return ExtractedDocument(parts, title=title or None)
         if not doc.storage_key:
             raise ExtractionError("The original file is missing.")
         return extract(doc.kind, await self.storage.get(doc.storage_key))

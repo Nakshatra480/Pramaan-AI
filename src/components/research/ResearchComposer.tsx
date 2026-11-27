@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Check, ChevronDown, FolderClosed, Gauge, Layers, Paperclip, Sparkles, X } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, FileText, FolderClosed, Gauge, Layers, Paperclip, Sparkles, X } from "lucide-react";
 import { useRouter } from "@/lib/navigation";
 import { useEffect, useRef, useState } from "react";
 import { usePreferences } from "@/components/providers/PreferencesProvider";
@@ -31,6 +31,8 @@ interface ResearchComposerProps {
   settings?: ComposerSettings;
   onSettingsChange?: (s: ComposerSettings) => void;
   hideControls?: boolean;
+  /** "Research with this": documents the report is built from first. */
+  documentIds?: string[];
 }
 
 export interface ComposerSettings {
@@ -55,13 +57,28 @@ export function ResearchComposer({
   settings,
   onSettingsChange,
   hideControls,
+  documentIds = [],
 }: ResearchComposerProps) {
   const router = useRouter();
   const toast = useToast();
   const { prefs } = usePreferences();
   const [query, setQuery] = useState(initialQuery);
   const [ownMode, setOwnMode] = useState<ResearchMode>(prefs.defaultMode);
-  const [ownChannels, setOwnChannels] = useState<SourceChannel[]>(() => withProject(prefs.defaultChannels, initialProject));
+  // Research built from a document starts with that document as its only source (web and papers can be added).
+  const startChannels = (): SourceChannel[] => (documentIds.length ? [initialProject ? "project" : "library"] : withProject(prefs.defaultChannels, initialProject));
+  const [ownChannels, setOwnChannels] = useState<SourceChannel[]>(startChannels);
+  const [focus, setFocus] = useState<{ id: string; title: string }[]>([]);
+  const focusKey = documentIds.join(",");
+  useEffect(() => {
+    if (!focusKey) return;
+    let alive = true;
+    Promise.all(focusKey.split(",").map((id) => services.library.get(id).catch(() => null))).then((docs) => {
+      if (alive) setFocus(docs.filter((d): d is NonNullable<typeof d> => Boolean(d)).map((d) => ({ id: d.id, title: d.title })));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [focusKey]);
   const [ownProject, setOwnProject] = useState<string | null>(initialProject);
   const mode = settings?.mode ?? ownMode;
   const channels = settings?.channels ?? ownChannels;
@@ -132,7 +149,8 @@ export function ResearchComposer({
   // Keep defaults in sync once preferences hydrate.
   useEffect(() => {
     setOwnMode(prefs.defaultMode);
-    setOwnChannels(withProject(prefs.defaultChannels, initialProject));
+    setOwnChannels(documentIds.length ? [initialProject ? "project" : "library"] : withProject(prefs.defaultChannels, initialProject));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- documentIds is read once, like the other initial props
   }, [prefs.defaultMode, prefs.defaultChannels, initialProject]);
 
   // Attached files are uploaded to the library right away and must finish indexing before the
@@ -203,7 +221,7 @@ export function ResearchComposer({
     setError(null);
     setSubmitting(true);
     try {
-      const r = await services.research.create({ query: q, mode, channels, projectId });
+      const r = await services.research.create({ query: q, mode, channels, projectId, documentIds: focus.map((d) => d.id) });
       void track("research_started", { mode, in_project: Boolean(projectId) });
       router.push(`/research/${r.id}`);
     } catch (e) {
@@ -237,6 +255,25 @@ export function ResearchComposer({
         <label htmlFor="composer" className="sr-only">
           Research question
         </label>
+        {focus.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 px-4 pt-3.5 -mb-1.5">
+            <span className="text-[12px] text-ink-muted">Built from</span>
+            {focus.map((d) => (
+              <span key={d.id} className="inline-flex max-w-full items-center gap-1.5 h-7 pl-2.5 pr-1 rounded-full bg-sage-soft text-sage-ink text-[12.5px] font-medium">
+                <FileText className="size-3.5 shrink-0" aria-hidden />
+                <span className="truncate">{d.title}</span>
+                <button
+                  type="button"
+                  onClick={() => setFocus((xs) => xs.filter((x) => x.id !== d.id))}
+                  aria-label={`Don't build the research from ${d.title}`}
+                  className="grid place-items-center size-5 rounded-full hover:bg-sage/60"
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <textarea
           id="composer"
           ref={ref}

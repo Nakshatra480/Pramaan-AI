@@ -66,7 +66,7 @@ export function ResearchActions({ onFollowUp }: { onFollowUp: () => void }) {
   const startAgain = async () => {
     setStarting(true);
     try {
-      const r = await services.research.create({ query: research.query, mode: research.mode, channels: research.channels, projectId: research.projectId });
+      const r = await services.research.create({ query: research.query, mode: research.mode, channels: research.channels, projectId: research.projectId, documentIds: research.documentIds });
       router.push(`/research/${r.id}`);
     } catch (e) {
       setStarting(false);
@@ -76,6 +76,7 @@ export function ResearchActions({ onFollowUp }: { onFollowUp: () => void }) {
   const editAndRun = () => {
     const q = new URLSearchParams({ q: research.query });
     if (research.projectId) q.set("project", research.projectId);
+    for (const id of research.documentIds ?? []) q.append("doc", id);
     router.push(`/research/new?${q.toString()}`);
   };
 

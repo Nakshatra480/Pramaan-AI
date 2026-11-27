@@ -47,6 +47,7 @@ function fromSummary(r: ResearchSummaryDTO): Research {
     errorCode: r.errorCode,
     parentId: r.parentId ?? null,
     revisionInstructions: r.revisionInstructions ?? null,
+    documentIds: r.documentIds ?? [],
   };
 }
 
@@ -184,7 +185,7 @@ export const apiResearchService = {
   async create(input: ResearchInput): Promise<Research> {
     const { researchId } = await apiFetch<{ researchId: string; status: string }>("/research", {
       method: "POST",
-      body: { query: input.query, projectId: input.projectId, mode: input.mode, sources: input.channels },
+      body: { query: input.query, projectId: input.projectId, mode: input.mode, sources: input.channels, documentIds: input.documentIds ?? [] },
     });
     apiEvents.notify();
     return {

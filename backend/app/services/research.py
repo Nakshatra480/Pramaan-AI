@@ -10,7 +10,19 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFound, ValidationFailed
-from app.db.models import ActivityKind, Message, ProjectMember, ProjectRole, ResearchSession, ResearchStatus, Share, StepStatus, User, Visibility
+from app.db.models import (
+    ActivityKind,
+    DocumentStatus,
+    Message,
+    ProjectMember,
+    ProjectRole,
+    ResearchSession,
+    ResearchStatus,
+    Share,
+    StepStatus,
+    User,
+    Visibility,
+)
 from app.repositories.projects import ActivityRepository
 from app.repositories.research import ResearchRepository
 from app.research.citations import CitationMapper
@@ -34,7 +46,7 @@ from app.schemas.research import (
     SourceOut,
     StepOut,
 )
-from app.services.access import require_project, require_research
+from app.services.access import require_document, require_project, require_research
 from app.services.jobs import JobRunner, get_job_runner
 
 logger = logging.getLogger("pramaan.research")
@@ -54,6 +66,13 @@ class ResearchService:
             await require_project(self.db, data.project_id, user, ProjectRole.editor)
         else:
             channels = [c for c in channels if c != "project"]
+        focus = list(dict.fromkeys(data.document_ids))
+        for document_id in focus:
+            doc = await require_document(self.db, document_id, user)  # yours, or shared with you through a project
+            if doc.status != DocumentStatus.ready:
+                raise ValidationFailed(f"“{doc.title}” is still being indexed. Try again once it's ready.", code="DOCUMENT_NOT_READY")
+        if focus and not {"library", "project"} & set(channels):
+            channels.append("project" if data.project_id is not None else "library")  # the documents are a source
         if not channels:
             raise ValidationFailed("Select at least one source.", code="NO_SOURCES_SELECTED")
         session = await self.repo.create(
@@ -65,6 +84,7 @@ class ResearchService:
                 mode=data.mode,
                 channels=channels,
                 metrics={},
+                focus_document_ids=focus,
             )
         )
         await self._enqueue(session.id)
@@ -129,6 +149,7 @@ class ResearchService:
             error_code=r.error_code,
             parent_id=r.parent_id,
             revision_instructions=r.revision_instructions,
+            document_ids=list(r.focus_document_ids or []),
         )
 
     async def assemble(self, r: ResearchSession) -> ResearchOut:
@@ -299,6 +320,7 @@ async def _start_revision(db: AsyncSession, parent: ResearchSession, msg: Messag
             metrics={},
             parent_id=parent.id,
             revision_instructions=instructions,
+            focus_document_ids=list(parent.focus_document_ids or []),
         )
     )
     msg.kind = "revision"

@@ -18,6 +18,7 @@ from app.services.search.wikipedia import EncyclopediaSearch, NoWikipedia
 
 Retrieve = Callable[[str, list[uuid.UUID], int], Awaitable[list[ChunkHit]]]
 PersistSources = Callable[[uuid.UUID, list[SourceItem]], Awaitable[None]]
+ReadDocuments = Callable[[list[uuid.UUID], int], Awaitable[list[ChunkHit]]]
 
 
 @dataclass
@@ -29,6 +30,7 @@ class ResearchDeps:
     retrieve: Retrieve
     reporter: ProgressReporter
     persist_sources: PersistSources
+    read_documents: ReadDocuments | None = None  # a document's passages in order ("Research with this")
     wikipedia: EncyclopediaSearch = field(default_factory=NoWikipedia)
     reader: PageReader = field(default_factory=NoReader)  # opens and parses result pages (BeautifulSoup)
     images: ImageVerifier = field(default_factory=AcceptAllImages)  # checks a report's figures are real, reachable images

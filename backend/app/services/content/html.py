@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from urllib.parse import urljoin, urlparse
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, NavigableString, Tag
 
 from app.research.text import sentences
 
@@ -84,10 +84,22 @@ class ParsedPage:
     published: date | None = None
     blocks: list[Block] = field(default_factory=list)
     images: list[PageImage] = field(default_factory=list)
+    links: list[str] = field(default_factory=list)  # from the article area only
 
     @property
     def text(self) -> str:
         return "\n\n".join(b.text for b in self.blocks)
+
+    def document_text(self) -> str:
+        """The page as a readable document for the library: section headings ("## Use Cases") before their text."""
+        out: list[str] = []
+        section = ""
+        for b in self.blocks:
+            if b.section and b.section != section:
+                out.append(f"## {b.section}")
+            section = b.section
+            out.append(b.text)
+        return "\n\n".join(out)
 
     def passages(self, *, target: int = PASSAGE_TARGET, maximum: int = PASSAGE_MAX, minimum: int = 80) -> list[str]:
         return passages(self.blocks, target=target, maximum=maximum, minimum=minimum)
@@ -314,8 +326,11 @@ def parse_html(html: str | bytes, url: str | None = None, *, encoding: str | Non
     seen: set[str] = set()
     section = ""
     skip_level = 0  # inside a references / "see also" section of this heading level
-    for el in root.find_all(_BLOCKS):
+    for el in root.find_all([*_BLOCKS, "div"]):
         if el.decomposed:
+            continue
+        # A <div> counts only for text directly inside it (a lead line, a card's description) with no blocks within.
+        if el.name == "div" and (el.find([*_BLOCKS, "div"]) or el.find_parent(_BLOCKS) or not _own_text(el)):
             continue
         if el.name in _HEADINGS:
             level = int(el.name[1])
@@ -342,7 +357,25 @@ def parse_html(html: str | bytes, url: str | None = None, *, encoding: str | Non
     if not page.title and (h1 := soup.find("h1")):
         page.title = _clean(h1.get_text(" "))
     page.title = page.title[:300]
+    page.links = _content_links(root, url)
     return page
+
+
+def _own_text(el: Tag) -> bool:
+    return any(isinstance(c, NavigableString) and c.strip() for c in el.children)
+
+
+def _content_links(root: Tag, url: str | None) -> list[str]:
+    """Absolute http(s) links from the article area (navigation and sidebars were removed), in page order."""
+    out: list[str] = []
+    for a in root.find_all("a", href=True):
+        href = str(a["href"]).strip()
+        if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+        absolute = urljoin(url or "", href).split("#", 1)[0]
+        if absolute.startswith(("http://", "https://")) and absolute not in out:
+            out.append(absolute)
+    return out
 
 
 def passages(blocks: list[Block], *, target: int = PASSAGE_TARGET, maximum: int = PASSAGE_MAX, minimum: int = 80) -> list[str]:

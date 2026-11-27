@@ -1,6 +1,9 @@
 import io
+import uuid
 
+import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 
 from app.services.jobs import get_job_runner
 from tests.conftest import ALICE, BOB
@@ -114,3 +117,37 @@ async def test_library_is_private_between_users(client: AsyncClient) -> None:
     # Bob cannot upload into Alice's project.
     ap = (await client.post("/api/v1/projects", headers=ALICE, json={"name": "Alice's"})).json()
     assert (await upload(client, BOB, "x.md", b"hello world text", projectId=ap["id"])).status_code == 404
+
+
+async def test_website_import_keeps_every_page_and_can_be_refreshed(client: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services.content.fetch import SitePage
+    from app.services.documents import processor
+
+    calls: list[str] = []
+
+    async def site(url: str) -> list[SitePage]:
+        calls.append(url)
+        intro = "Kafka is an event streaming platform used to collect, store and process streams of events in real time. " * 6
+        quick = "Start the broker, create a topic called quickstart-events, then write and read events with the console tools. " * 6
+        return [
+            SitePage(url, "Getting Started", "## Introduction\n\nLearn what event streaming is."),
+            SitePage(url + "introduction/", "Introduction", intro),
+            SitePage(url + "quickstart/", "Quick Start", quick),
+        ]
+
+    monkeypatch.setattr(processor, "fetch_site", site)
+    r = await client.post("/api/v1/library/urls", headers=ALICE, json={"url": "https://kafka.example/44/getting-started/"})
+    await get_job_runner().drain()
+    doc = (await client.get(f"/api/v1/library/{r.json()['id']}", headers=ALICE)).json()
+    assert doc["status"] == "ready" and doc["title"] == "Getting Started"
+    assert doc["sizeBytes"] > 1000  # the text that was read, not "0 B"
+    from app.db.database import get_sessionmaker
+    from app.db.models import DocumentChunk
+
+    async with get_sessionmaker()() as db:
+        text = " ".join((await db.scalars(select(DocumentChunk.content).where(DocumentChunk.document_id == uuid.UUID(doc["id"])))).all())
+    assert "event streaming platform" in text and "quickstart-events" in text and "# Quick Start" in text
+    # A website can be refreshed (read again) once it's ready.
+    assert (await client.post(f"/api/v1/library/{doc['id']}/retry", headers=ALICE)).status_code == 200
+    await get_job_runner().drain()
+    assert len(calls) == 2

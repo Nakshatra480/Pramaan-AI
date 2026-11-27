@@ -22,7 +22,11 @@ export function ResearchReport({ project, actions, embedded = false }: { project
 }
 
 function ReportBody({ project, actions, embedded }: { project?: Project | null; actions?: ReactNode; embedded: boolean }) {
-  const { research } = useResearch();
+  const { research, sources } = useResearch();
+  // "Research with this": the documents the report was built from (library sources link to /library/<id>).
+  const builtFrom = (research.documentIds ?? [])
+    .map((id) => ({ id, title: sources.find((s) => s.type === "library" && s.url.endsWith(`/library/${id}`))?.title }))
+    .filter((d): d is { id: string; title: string } => Boolean(d.title));
   const report = research.report!;
   const paper = isPaper(report);
   const title = (paper && report.title) || research.title;
@@ -62,6 +66,19 @@ function ReportBody({ project, actions, embedded }: { project?: Project | null; 
           <span className="text-ink-faint">{paper ? "Research question — " : "Question — "}</span>
           {research.query}
         </p>
+        {builtFrom.length > 0 && (
+          <p className="mt-2 text-[13.5px] text-ink-muted">
+            <span className="text-ink-faint">Built from — </span>
+            {builtFrom.map((d, i) => (
+              <span key={d.id}>
+                {i > 0 && ", "}
+                <Link href={`/library/${d.id}`} className="underline decoration-line-strong underline-offset-2 hover:text-ink">
+                  {d.title}
+                </Link>
+              </span>
+            ))}
+          </p>
+        )}
         {paper && report.keywords && report.keywords.length > 0 && (
           <p className="mt-2 text-[13.5px] text-ink-muted">
             <span className="text-ink-faint">Keywords — </span>

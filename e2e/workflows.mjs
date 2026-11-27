@@ -212,6 +212,42 @@ await test("Composer attachments are uploaded, indexed and used", async () => {
   return attached.warning ? `indexed (${attached.warning.slice(0, 40)}…)` : "indexed with semantic search";
 });
 
+await test("Research with this: a project document becomes a report built from it, saved in the project", async () => {
+  const project = (await api(alice.token, "/projects", { method: "POST", body: JSON.stringify({ name: `Turbines ${run}`, description: "" }) })).body;
+  const form = new FormData();
+  form.append("file", new Blob([MEMO.replace("Internal Trial Memo", "Project Memo")], { type: "text/markdown" }), `project-memo-${run}.md`);
+  form.append("projectId", project.id);
+  const doc = (await api(alice.token, "/library/upload", { method: "POST", body: form })).body;
+  for (let i = 0; i < 60 && (await api(alice.token, `/library/${doc.id}`)).body.status !== "ready"; i++) await new Promise((res) => setTimeout(res, 1000));
+  const { page, ctx } = await session(alice);
+  await page.goto(`${BASE}/projects/${project.id}/library`);
+  await page.getByRole("link", { name: new RegExp(`project memo ${run}`) }).first().click();
+  await page.waitForURL(new RegExp(`/library/${doc.id}\\?project=${project.id}`));
+  await page.getByRole("button", { name: "Research with this" }).click();
+  await page.waitForURL(/\/research\/new\?/);
+  expect(new URL(page.url()).searchParams.get("project") === project.id && new URL(page.url()).searchParams.get("doc") === doc.id, "the document and its project are carried");
+  await page.getByText("Built from").waitFor();
+  expect((await page.getByText(`project memo ${run}`).count()) > 0, "the composer shows the document");
+  await page.getByRole("button", { name: /^Research$/ }).click();
+  await page.waitForURL(/\/research\/[0-9a-f-]{36}$/);
+  const researchId = page.url().split("/").pop();
+  let r;
+  for (let i = 0; i < 90; i++) {
+    r = (await api(alice.token, `/research/${researchId}`)).body;
+    if (["completed", "failed"].includes(r.status)) break;
+    await new Promise((res) => setTimeout(res, 2000));
+  }
+  expect(r.status === "completed", `research completed (${r.status})`);
+  expect(r.projectId === project.id, "saved in the project");
+  expect(JSON.stringify(r.documentIds) === JSON.stringify([doc.id]), "built from the document");
+  expect(r.sources.every((s) => s.type === "library"), "the document is the only source by default");
+  const inProject = (await api(alice.token, `/research?projectId=${project.id}`)).body.map((x) => x.id);
+  expect(inProject.includes(researchId), "listed in the project's research");
+  await page.getByText("Built from —").waitFor({ timeout: 30000 });
+  await ctx.close();
+  return `${r.evidence.length} passages, all from the document`;
+});
+
 await test("M-15 Research again asks before starting a new job", async () => {
   const r = (await api(alice.token, "/research", { method: "POST", body: JSON.stringify({ query: `What does the Zephyr-9 memo ${run} say?`, mode: "quick", sources: ["library"] }) })).body;
   const { page, ctx } = await session(alice);

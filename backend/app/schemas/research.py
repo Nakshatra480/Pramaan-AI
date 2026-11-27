@@ -17,6 +17,8 @@ class ResearchCreate(ApiModel):
     project_id: uuid.UUID | None = None
     mode: ResearchMode = ResearchMode.standard
     sources: list[Channel] = Field(default_factory=lambda: list[Channel](["web", "academic"]), min_length=1, max_length=4)
+    # "Research with this": build the report from these documents first (web/scholarly sources only supplement).
+    document_ids: list[uuid.UUID] = Field(default_factory=list, max_length=10)
 
     @field_validator("query")
     @classmethod
@@ -177,6 +179,7 @@ class ResearchSummaryOut(ApiModel):
     error_code: str | None = None
     parent_id: uuid.UUID | None = None  # set on a revision: the research it regenerates
     revision_instructions: str | None = None
+    document_ids: list[uuid.UUID] = []  # documents the report was built from first ("Research with this")
 
 
 class ResearchOut(ResearchSummaryOut):

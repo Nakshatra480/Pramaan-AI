@@ -157,7 +157,7 @@ export function LibraryBrowser({ projectId, initialUpload = false }: { projectId
         ) : (
           <div className="rounded-xl border border-line bg-surface divide-y divide-line overflow-hidden">
             {docs.map((d) => (
-              <Link key={d.id} href={`/library/${d.id}`} className="flex items-center gap-4 px-4 py-3 hover:bg-subtle/60 transition-colors">
+              <Link key={d.id} href={projectId ? `/library/${d.id}?project=${projectId}` : `/library/${d.id}`} className="flex items-center gap-4 px-4 py-3 hover:bg-subtle/60 transition-colors">
                 <DocumentThumb kind={d.kind} size="sm" />
                 <span className="flex-1 min-w-0">
                   <span className="block text-[14px] text-ink truncate">{d.title}</span>

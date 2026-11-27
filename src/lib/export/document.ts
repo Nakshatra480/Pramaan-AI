@@ -1,10 +1,12 @@
 /**
- * The exported report, independent of format. Only the research itself goes in: the question, the summary,
- * findings, analysis, limitations and the sources the report cites. Nothing from the app's interface
- * (actions, follow-ups, progress, verification badges) is exported.
+ * The exported report, independent of format. Only the research itself goes in: for a paper, its title,
+ * question, keywords, abstract, numbered sections (with their tables, diagrams and figures) and references;
+ * for an older report, the summary, findings, analysis and limitations. Nothing from the app's interface
+ * (actions, follow-ups, progress, verification badges, the claim appendix) is exported.
  */
+import { paperParts, visualNumbers } from "@/lib/paper";
 import { citationLabel, parseRichText } from "@/lib/utils/citations";
-import type { CitationStyle, Research, Source, SourceType } from "@/types";
+import { isPaper, type CitationStyle, type Research, type Source, type SourceType } from "@/types";
 
 /** A run of report text: plain text, or one in-text citation covering one or more sources. */
 export type Inline = { kind: "text"; text: string } | { kind: "cite"; numbers: number[]; label: string };
@@ -21,13 +23,33 @@ export interface ExportSource {
   reference: string;
 }
 
+export type ExportBlock =
+  | { kind: "paragraph"; runs: Inline[] }
+  | { kind: "list"; items: Inline[][] }
+  | { kind: "table"; label: string; caption: Inline[]; columns: string[]; rows: Inline[][][] }
+  /** `svg` is filled in by `withDiagrams` (PDF) — diagrams are rendered in the browser at export time. */
+  | { kind: "diagram"; label: string; caption: Inline[]; code: string; svg?: string }
+  | { kind: "figure"; label: string; caption: string; url: string; credit: string; sourceUrl: string; sourceNumber: number | null };
+
+export interface ExportSection {
+  number: number;
+  heading: string;
+  blocks: ExportBlock[];
+}
+
 export interface ExportDocument {
   title: string;
   question: string;
   date: string;
   mode: string;
   style: CitationStyle;
+  /** A research paper (abstract + numbered sections) rather than an older summary/findings report. */
+  paper: boolean;
+  keywords: string[];
+  /** The abstract, in a paper. */
   summary: Inline[][];
+  /** Paper only: numbered sections in reading order, Limitations included. */
+  sections: ExportSection[];
   findings: { title: string; body: Inline[] }[];
   analysis: { heading: string; paragraphs: Inline[][] }[];
   limitations: Inline[][];
@@ -155,9 +177,14 @@ export function buildExportDocument(r: Research, sources: Source[], style: Citat
       reference: reference(s, style, n),
     }));
   if (style !== "numeric") exported.sort((a, b) => a.reference.localeCompare(b.reference));
+  const paper = isPaper(rep);
+  const title = (paper && rep.title) || r.title;
   return {
-    title: r.title,
-    question: distinctQuestion(r.query.trim(), r.title),
+    title,
+    question: distinctQuestion(r.query.trim(), title),
+    paper,
+    keywords: paper ? (rep.keywords ?? []) : [],
+    sections: paper ? exportSections(rep, run) : [],
     date: when ? new Date(when).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "",
     mode: MODE[r.mode],
     style,
@@ -169,6 +196,32 @@ export function buildExportDocument(r: Research, sources: Source[], style: Citat
   };
 }
 
+function exportSections(report: NonNullable<Research["report"]>, run: (t: string) => Inline[]): ExportSection[] {
+  const parts = paperParts(report);
+  const labels = visualNumbers(parts);
+  return parts.map((p) => ({
+    number: p.number,
+    heading: p.heading,
+    blocks: p.limitations
+      ? [{ kind: "list" as const, items: p.limitations.map(run) }]
+      : p.blocks.map((b): ExportBlock => {
+          const label = labels.get(b) ?? "";
+          switch (b.type) {
+            case "paragraph":
+              return { kind: "paragraph", runs: run(b.text) };
+            case "list":
+              return { kind: "list", items: b.items.map(run) };
+            case "table":
+              return { kind: "table", label, caption: run(b.caption), columns: b.columns, rows: b.rows.map((row) => row.map(run)) };
+            case "diagram":
+              return { kind: "diagram", label, caption: run(b.caption), code: b.code };
+            case "figure":
+              return { kind: "figure", label, caption: b.caption, url: b.url, credit: b.credit, sourceUrl: b.sourceUrl, sourceNumber: b.sourceIndex };
+          }
+        }),
+  }));
+}
+
 /** Plain text of a run list, citations in their label form ("[1, 2]" or "(Smith, 2024)"). */
 export function plain(runs: Inline[], style: CitationStyle): string {
   return runs
@@ -178,9 +231,25 @@ export function plain(runs: Inline[], style: CitationStyle): string {
     .trim();
 }
 
-/** The answer as plain text (summary and findings) for the clipboard. */
+/** The answer as plain text for the clipboard: the abstract (or summary and findings of an older report). */
 export function answerText(d: ExportDocument): string {
-  return [d.title, "", ...d.summary.map((p) => plain(p, d.style)), "", ...d.findings.map((f, i) => `${i + 1}. ${f.title}: ${plain(f.body, d.style)}`)].join("\n").trim();
+  const body = d.paper ? [] : ["", ...d.findings.map((f, i) => `${i + 1}. ${f.title}: ${plain(f.body, d.style)}`)];
+  return [d.title, "", ...d.summary.map((p) => plain(p, d.style)), ...body].join("\n").trim();
+}
+
+/** A sentence that ends with exactly one full stop (captions may or may not end with one already). */
+export function sentence(text: string): string {
+  const t = text.trim();
+  return !t || /[.!?…]$/.test(t) ? t : `${t}.`;
+}
+
+/** A URL's host for display ("example.com"), or the URL itself if it doesn't parse. */
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }
 
 export function slugify(s: string) {

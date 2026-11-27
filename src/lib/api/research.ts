@@ -1,8 +1,8 @@
-import type { Research, ResearchInput, ResearchProgressEvent, ResearchStatus, ResearchStep, ResearchStepId } from "@/types";
+import type { ReportBlock, Research, ResearchInput, ResearchProgressEvent, ResearchReport, ResearchStatus, ResearchStep, ResearchStepId } from "@/types";
 import { ApiError, apiFetch, apiStream } from "./client";
 import { apiEvents, scheduleRefresh } from "./events";
 import { rememberSources, toSource } from "./sources";
-import type { BackendResearchStatus, ProgressEventDTO, ResearchDTO, ResearchSummaryDTO, StepDTO } from "./types";
+import type { BackendResearchStatus, ProgressEventDTO, ReportBlockDTO, ReportDTO, ResearchDTO, ResearchSummaryDTO, StepDTO } from "./types";
 
 /** Backend state machine → the UI's coarser research states. */
 export function toUiStatus(status: BackendResearchStatus, errorCode?: string | null): ResearchStatus {
@@ -50,6 +50,38 @@ function fromSummary(r: ResearchSummaryDTO): Research {
   };
 }
 
+/** A caption without a source's own numbering ("Figure 3. …") — the report numbers its visuals itself. */
+const ownNumber = (caption: string | null) => (caption ?? "").replace(/^\s*(?:fig(?:ure)?\.?|table)\s*\d+\s*[:.\-–—]\s*/i, "");
+
+/** The API's block (all fields, nulls for unused ones) as a typed block; malformed blocks are dropped. */
+export function toBlock(b: ReportBlockDTO): ReportBlock | null {
+  switch (b.type) {
+    case "paragraph":
+      return b.text ? { type: "paragraph", text: b.text } : null;
+    case "list":
+      return b.items?.length ? { type: "list", items: b.items } : null;
+    case "table":
+      return b.columns?.length && b.rows?.length ? { type: "table", caption: ownNumber(b.caption), columns: b.columns, rows: b.rows } : null;
+    case "diagram":
+      return b.code ? { type: "diagram", caption: ownNumber(b.caption), code: b.code } : null;
+    case "figure":
+      return b.url?.startsWith("https://")
+        ? { type: "figure", caption: ownNumber(b.caption), url: b.url, credit: b.credit ?? "", sourceUrl: b.sourceUrl ?? "", sourceIndex: b.sourceIndex ?? null }
+        : null;
+    default:
+      return null;
+  }
+}
+
+export function toReport(r: ReportDTO): ResearchReport {
+  return {
+    ...r,
+    format: r.format ?? "legacy",
+    keywords: r.keywords ?? [],
+    sections: (r.sections ?? []).map((s) => ({ heading: s.heading, blocks: s.blocks.map(toBlock).filter((b): b is ReportBlock => b !== null) })),
+  };
+}
+
 function fromDetail(r: ResearchDTO): Research {
   const sources = r.sources.map(toSource);
   rememberSources(sources);
@@ -61,7 +93,7 @@ function fromDetail(r: ResearchDTO): Research {
     progress: r.progress,
     evidence: r.evidence.map((e) => ({ id: e.id, sourceId: e.sourceId, passage: e.passage, relevance: e.relevance, location: e.location ?? undefined })),
     claims: r.claims,
-    report: r.report ?? undefined,
+    report: r.report ? toReport(r.report) : undefined,
     followUps: r.followUps.map((f) => ({ ...f, kind: f.kind ?? "answer", revisionId: f.revisionId ?? null, sources: f.sources ?? [] })),
   };
 }

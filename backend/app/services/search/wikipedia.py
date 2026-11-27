@@ -22,11 +22,13 @@ from app.research.state import SourceItem
 from app.research.text import STOP
 from app.services import cache
 from app.services.content.html import parse_html
+from app.services.content.reader import page_images
 from app.services.search.common import normalize_url
 
 logger = logging.getLogger("pramaan.wikipedia")
 
 MAX_PASSAGES = 40
+ARTICLE_CACHE = "wikipedia_article:v2"  # v2: articles also carry their figures
 
 
 # Words that make Wikipedia's full-text search look for the wrong articles ("vs", "how does it differ", "latest").
@@ -133,7 +135,7 @@ class WikipediaService:
 
     async def _article(self, title: str) -> dict[str, object] | None:
         key = {"lang": self.language, "title": title}
-        cached = await cache.get_json("wikipedia_article", key)
+        cached = await cache.get_json(ARTICLE_CACHE, key)
         if isinstance(cached, dict):
             return cached
         async with self._gate:
@@ -146,8 +148,12 @@ class WikipediaService:
             data: dict[str, object] = {"passages": [], "disambiguation": True}
         else:
             parsed = await asyncio.to_thread(parse_html, html, self.article_url(title))
-            data = {"passages": parsed.passages()[:MAX_PASSAGES], "disambiguation": False}
-        await cache.set_json("wikipedia_article", key, data, get_settings().cache_ttl_search_s)
+            data = {
+                "passages": parsed.passages()[:MAX_PASSAGES],
+                "images": [{"url": i.url, "caption": i.caption} for i in parsed.images],
+                "disambiguation": False,
+            }
+        await cache.set_json(ARTICLE_CACHE, key, data, get_settings().cache_ttl_search_s)
         return data
 
     async def search(self, query: str, *, max_results: int) -> list[SourceItem]:
@@ -179,6 +185,7 @@ class WikipediaService:
                     snippet=snippet[:6000],
                     relevance=round(max(0.3, 0.7 - 0.06 * rank), 3),  # search rank; evidence ranking re-scores the passages
                     passages=passages,
+                    images=page_images(art or {}),
                 )
             )
             if len(out) >= max_results:

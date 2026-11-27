@@ -16,29 +16,35 @@ CLAIMS = [
 ]
 
 
+def paper(abstract: list[str], sections: list[dict] | None = None, limitations: list[str] | None = None) -> ReportDraft:  # type: ignore[type-arg]
+    return ReportDraft(title="A title", abstract=abstract, sections=sections or [], limitations=limitations or [])
+
+
+def para(text: str) -> dict:  # type: ignore[type-arg]
+    return {"type": "paragraph", "text": text}
+
+
 def test_indices_assigned_in_order_of_first_appearance() -> None:
-    draft = ReportDraft(summary=["Solid electrolytes need dry rooms [C2]. Battery costs fell sharply [C1]."], findings=[], analysis=[], limitations=[])
+    draft = paper(["Solid electrolytes need dry rooms [C2]."], [{"heading": "Costs", "blocks": [para("Battery costs fell sharply [C1].")]}])
     report, cites = map_report(draft, CLAIMS, EV)
-    assert report["summary"] == ["Solid electrolytes need dry rooms [1]. Battery costs fell sharply [2][3]."]
+    assert report["format"] == "paper" and report["title"] == "A title"
+    assert report["summary"] == ["Solid electrolytes need dry rooms [1]."]  # the abstract
+    assert report["sections"] == [{"heading": "Costs", "blocks": [{"type": "paragraph", "text": "Battery costs fell sharply [2][3]."}]}]
     assert [(c.index, c.source_key) for c in cites] == [(1, "src-c"), (2, "src-a"), (3, "src-b")]
 
 
 def test_unsupported_unknown_and_invented_references_are_removed() -> None:
-    draft = ReportDraft(
-        summary=[
+    draft = paper(
+        [
             "Recycling rates doubled [C3]. Unknown [C9]. Cathode supply tightened [C4]. Fake number [7]. "
             "Link [site](https://evil.example/x) and https://evil.example/raw battery costs fell sharply ok [C1]."
-        ],
-        findings=[{"title": "T", "body": "Recycling rates doubled [C3]", "claims": ["C3", "C1"]}],
-        analysis=[],
-        limitations=[],
+        ]
     )
     report, cites = map_report(draft, CLAIMS, EV)
     s = report["summary"][0]
     assert "evil" not in s and "[7]" not in s and "C3" not in s and "C9" not in s
     assert s.endswith("ok [1][2].")
-    assert report["findings"][0]["claimIds"] == ["C1"]  # insufficient claim C3 never cited
-    assert {c.source_key for c in cites} == {"src-a", "src-b"}
+    assert {c.source_key for c in cites} == {"src-a", "src-b"}  # insufficient claim C3 never cited
 
 
 def test_multi_claim_marker_and_dedup() -> None:
@@ -83,15 +89,12 @@ ORCHID_EV = [EvidenceItem("E1", "doc:1", "…retained for exactly 41 days…", 0
 
 def test_commentary_loses_its_citation_but_faithful_sentences_keep_theirs() -> None:
     """Regression for the audit example: the model attached [C1] to its own interpretation."""
-    draft = ReportDraft(
-        summary=[
+    draft = paper(
+        [
             "Sensor logs are retained for exactly 41 days before being archived to cold storage [C1]. "
             "A 41-day retention window provides a balance between data availability for troubleshooting and storage cost management [C1]. "
             "The protocol is owned by the Meridian reliability team [C2]."
-        ],
-        findings=[],
-        analysis=[],
-        limitations=[],
+        ]
     )
     report, cites = map_report(draft, ORCHID, ORCHID_EV)
     s = report["summary"][0]
@@ -114,3 +117,31 @@ def test_adjacent_citations_are_merged_and_deduplicated() -> None:
     ev = [EvidenceItem(id=f"E{i}", source_key=k, passage="p", relevance=0.5) for i, k in enumerate(["a", "b", "b", "c"], start=1)]
     out = CitationMapper([], ev).render("Leaders are Mitsubishi and Daikin [E1] [E2] [E3][E4]. Done [E1].", kind="evidence")
     assert out == "Leaders are Mitsubishi and Daikin [1][2][3]. Done [1]."
+
+
+def test_tables_diagrams_and_figures_carry_resolved_citations() -> None:
+    table = {
+        "type": "table",
+        "caption": "Costs [C1]",
+        "columns": ["Item", "Change"],
+        "rows": [
+            {"cells": ["Batteries [C1]", "fell sharply"], "claims": ["C1"]},
+            {"cells": ["Rooms", "dry"], "claims": ["C2", "C3"]},  # C3 is insufficient: not cited
+            {"cells": ["Recycling", "doubled"], "claims": ["C3"]},  # nothing citable: row dropped
+        ],
+    }
+    diagram = {"type": "diagram", "caption": "Flow", "code": "flowchart LR\n    n1 --> n2", "claims": ["C2"]}
+    figure = {
+        "type": "figure",
+        "caption": "A cell",
+        "url": "https://img.example/a.jpg",
+        "credit": "Lab",
+        "page_url": "https://c.example",
+        "source_key": "src-c",
+    }
+    report, cites = map_report(paper(["Battery costs fell sharply [C1]."], [{"heading": "Data", "blocks": [table, diagram, figure]}]), CLAIMS, EV)
+    t, d, f = report["sections"][0]["blocks"]  # type: ignore[index]
+    assert t == {"type": "table", "caption": "Costs", "columns": ["Item", "Change"], "rows": [["Batteries", "fell sharply [1][2]"], ["Rooms", "dry [3]"]]}
+    assert d == {"type": "diagram", "caption": "Flow [3]", "code": "flowchart LR\n    n1 --> n2"}
+    assert f["sourceIndex"] == 3 and f["url"] == "https://img.example/a.jpg" and f["sourceUrl"] == "https://c.example"
+    assert [c.source_key for c in cites] == ["src-a", "src-b", "src-c"]

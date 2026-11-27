@@ -1,24 +1,25 @@
 # Pramaan AI
 
-**Research, with evidence.** Ask a question and Pramaan's research agents search the web, Wikipedia, scholarly papers and your own documents, read the sources, verify every claim against the evidence and write a cited report. Every citation points to a real source; models never invent references.
+**Research, with evidence.** Ask a question and Pramaan's research agents search the web, Wikipedia, scholarly papers and your own documents, read the sources, verify every claim against the evidence and write it up as a cited research paper. Every citation points to a real source; models never invent references.
 
 **Live app:** [pramaan-207-148-12-93.sslip.io](https://pramaan-207-148-12-93.sslip.io)
 
 ## What you can do
 
 - **Research any question** in three depths: **Quick** (about 10 cited sources), **Standard** (about 35) and **Deep** (about 50), and watch each step happen live.
-- **Trust the answer.** Claims are checked against verbatim passages and marked supported or partially supported; unsupported ones are left out. Click any citation to see the exact passage.
+- **Read a real research paper.** A specific title, keywords and an abstract, then numbered sections — introduction, topic-specific sections, discussion, limitations, conclusion — with tables, diagrams and figures from the sources where the evidence supports them, and a reference list.
+- **Trust the answer.** Claims are checked against verbatim passages and marked supported or partially supported; unsupported ones are left out. Click any citation to see the exact passage. A table can't contain a number its cited evidence doesn't state, and a figure is always an image from one of the paper's own sources, credited to it.
 - **Use your own documents.** Upload PDFs, Word files, notes or web pages to your library or a project, and research them alongside public sources.
 - **Ask follow-ups.** Questions are answered from the report plus a fresh search. Requests like "make it shorter" or "focus on India" regenerate a new version, and the original stays untouched.
-- **Share and export.** Share a read-only link, or export a styled PDF, a Word document or Markdown that contains only the report.
-- **Speak and listen.** Dictate questions with the mic, and have reports read aloud with Listen.
+- **Share and export.** Share a read-only link, or export the paper — tables, diagrams and figures included — as a styled PDF, a Word document or Markdown.
+- **Speak and listen.** Dictate questions with the mic — filler words, false starts and background noise are cleaned up and misheard terms fixed (with one-click undo) — and have reports read aloud with Listen.
 - **Organise.** Projects with shared members and instructions, a searchable library, and full history.
 
 ## How it works
 
 ```mermaid
 flowchart TD
-    U(["You ask a question<br/>(typed or spoken)"]) --> APP["Pramaan web app<br/>React · Vite"]
+    U(["You ask a question<br/>(typed, or spoken and cleaned up)"]) --> APP["Pramaan web app<br/>React · Vite"]
     APP -->|"Firebase sign-in · REST + live progress (SSE)"| API["Pramaan API<br/>FastAPI"]
     API --> Q[("Research job queue<br/>Postgres")]
     Q --> PLAN["🗺️ Planner — Groq<br/>breaks the question into search directions"]
@@ -34,9 +35,10 @@ flowchart TD
     LIB --> EV
     EV["🔎 Evidence<br/>reads pages (BeautifulSoup), ranks passages<br/>with OpenRouter embeddings"] --> CL["🧩 Claims — Groq<br/>each linked to its evidence"]
     CL --> VE["✅ Verification — Groq<br/>every claim checked against its passages"]
-    VE --> SY["✍️ Report writer — Groq<br/>only verified claims"]
-    SY --> CI["🔗 Citations<br/>mapped to real sources in code"]
-    CI --> R(["📄 Cited report<br/>share · PDF · Word · Markdown · Listen"])
+    VE --> SY["✍️ Paper writer — Groq<br/>abstract and sections from verified claims only"]
+    SY --> VI["📊 Tables, diagrams and figures — Groq<br/>kept only if the evidence backs them"]
+    VI --> CI["🔗 Citations<br/>mapped to real sources in code"]
+    CI --> R(["📄 Cited research paper<br/>share · PDF · Word · Markdown · Listen"])
 
     R --> F{"Follow-up"}
     F -->|"a question"| ANS["Answer from the report + a fresh<br/>web · Wikipedia · scholarly search"]
@@ -47,7 +49,7 @@ flowchart TD
 
 | Layer | Technology |
 | --- | --- |
-| Frontend | React 19, Vite 8, React Router 8, TypeScript, Tailwind CSS v4, Framer Motion |
+| Frontend | React 19, Vite 8, React Router 8, TypeScript, Tailwind CSS v4, Framer Motion, Mermaid (diagrams, loaded on demand) |
 | Backend | Python 3.12, FastAPI, LangGraph (agent pipeline), SQLAlchemy (async), Alembic, BeautifulSoup |
 | Data | PostgreSQL with pgvector (vector + full-text search) |
 | Testing | Vitest, Playwright, pytest, ruff, mypy; GitHub Actions CI |
@@ -56,7 +58,7 @@ flowchart TD
 
 | Service | Used for |
 | --- | --- |
-| **Groq** | Language model (`openai/gpt-oss-120b`) for planning, claims, verification and writing; Whisper for voice input |
+| **Groq** | Language models: `openai/gpt-oss-120b` for planning, claims, verification and writing; `openai/gpt-oss-20b` to clean up dictated questions; Whisper for voice input |
 | **OpenRouter** | Text embeddings for ranking evidence and searching documents |
 | **Tavily** | Web search |
 | **Wikipedia** (MediaWiki API) | Encyclopedia articles |

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Check, ChevronDown, FolderClosed, Gauge, Layers, Paperclip, X } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, FolderClosed, Gauge, Layers, Paperclip, Sparkles, X } from "lucide-react";
 import { useRouter } from "@/lib/navigation";
 import { useEffect, useRef, useState } from "react";
 import { usePreferences } from "@/components/providers/PreferencesProvider";
@@ -78,20 +78,48 @@ export function ResearchComposer({
   const { data: projects } = useResource(() => services.projects.list(), []);
   const project = projects?.find((p) => p.id === projectId);
 
-  // Voice input: dictation is appended to whatever was typed before the mic was pressed.
+  // Voice input: dictation is appended to whatever was typed before the mic was pressed, shown live while
+  // speaking, then replaced by its cleaned-up version (fillers, misheard words, spelling) — undoable.
   const dictationBase = useRef("");
+  const dictated = useRef<string | null>(null); // the text the live transcript last put in the box
+  const queryNow = useRef(query);
+  useEffect(() => {
+    queryNow.current = query;
+  });
+  const [polished, setPolished] = useState<{ base: string; original: string } | null>(null);
   const voice = useVoiceInput({
     transcribe: services.speech.transcribe,
+    refine: services.speech.refine,
+    context: () => dictationBase.current,
     onTranscript: (text) => {
-      setQuery(appendDictation(dictationBase.current, text));
+      dictated.current = appendDictation(dictationBase.current, text);
+      setQuery(dictated.current);
+      setPolished(null);
       setError(null);
+    },
+    onPolished: ({ text, original }) => {
+      // Typed since? The user's edits win over the clean-up.
+      if (queryNow.current !== (dictated.current ?? dictationBase.current)) return;
+      const next = appendDictation(dictationBase.current, text);
+      setQuery(next);
+      dictated.current = next;
+      if (!text.trim()) toast({ title: "Voice input", description: "Pramaan didn't catch a question. Try again somewhere quieter.", tone: "error" });
+      else if (text.trim() !== original.trim()) setPolished({ base: dictationBase.current, original });
     },
     onError: (message) => toast({ title: "Voice input", description: message, tone: "error" }),
   });
   const toggleVoice = () => {
     if (voice.active) return voice.stop();
     dictationBase.current = query;
+    dictated.current = null;
+    setPolished(null);
     voice.start();
+  };
+  const undoPolish = () => {
+    if (!polished) return;
+    setQuery(appendDictation(polished.base, polished.original));
+    setPolished(null);
+    ref.current?.focus();
   };
 
   useEffect(() => {
@@ -218,6 +246,7 @@ export function ResearchComposer({
           onChange={(e) => {
             if (voice.active) voice.stop(); // typing takes over from dictation
             setQuery(e.target.value);
+            if (polished) setPolished(null);
             if (error) setError(null);
           }}
           onKeyDown={(e) => {
@@ -226,7 +255,7 @@ export function ResearchComposer({
               void submit();
             }
           }}
-          placeholder={voice.state === "listening" ? "Listening… ask your question out loud" : voice.state === "transcribing" ? "Transcribing…" : placeholder}
+          placeholder={voice.state === "listening" ? "Listening… ask your question out loud" : voice.state === "transcribing" ? "Transcribing…" : voice.state === "polishing" ? "Cleaning up your question…" : placeholder}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? "composer-error" : nearLimit ? "composer-count" : undefined}
           className={cn(
@@ -390,11 +419,19 @@ export function ResearchComposer({
 
           {voice.supported && <VoiceInputButton state={voice.state} onClick={toggleVoice} disabled={submitting} size={hero ? "hero" : "default"} />}
           <span className="sr-only" role="status" aria-live="polite">
-            {voice.state === "listening" ? "Listening. Speak your question, then press stop." : voice.state === "transcribing" ? "Transcribing your question." : ""}
+            {voice.state === "listening"
+              ? "Listening. Speak your question, then press stop."
+              : voice.state === "transcribing"
+                ? "Transcribing your question."
+                : voice.state === "polishing"
+                  ? "Cleaning up your question."
+                  : polished
+                    ? "Your question was cleaned up. Undo is available below the box."
+                    : ""}
           </span>
           <button
             type="submit"
-            disabled={submitting || !query.trim() || pending || overLimit || voice.state === "transcribing"}
+            disabled={submitting || !query.trim() || pending || overLimit || voice.state === "transcribing" || voice.state === "polishing"}
             className={cn(
               "inline-flex items-center justify-center gap-2 rounded-xl bg-ink text-bg font-medium transition-[background-color,opacity,transform] active:scale-[0.97]",
               "disabled:opacity-30 hover:bg-ink-2",
@@ -416,6 +453,15 @@ export function ResearchComposer({
         {error ? (
           <p id="composer-error" role="alert" className="text-[12.5px] text-danger">
             {error}
+          </p>
+        ) : polished ? (
+          <p className="inline-flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-ink-muted">
+            <Sparkles className="size-3.5 text-sage-ink" aria-hidden />
+            Cleaned up from your voice
+            <span aria-hidden>·</span>
+            <button type="button" onClick={undoPolish} className="font-medium text-ink-2 underline decoration-line-strong underline-offset-2 hover:text-ink">
+              Undo
+            </button>
           </p>
         ) : (
           <p className="text-[12.5px] text-ink-faint">

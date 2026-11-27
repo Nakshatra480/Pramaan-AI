@@ -3,15 +3,41 @@
  *
  * - "native": the browser's speech recognition (Chrome, Edge, Safari) — live, word-by-word transcript.
  * - "server": browsers without it (Firefox) record a clip with MediaRecorder; the API transcribes it.
+ *
+ * Either way the dictation is then cleaned up ("polishing"): filler words, false starts, repeated words and
+ * transcribed background noise are removed and misheard words and spelling fixed, keeping what was meant.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Dictation } from "@/lib/api/speech";
+import { tidyDictation } from "./tidy";
 
 export type VoiceEngine = "native" | "server";
-export type VoiceState = "idle" | "starting" | "listening" | "transcribing";
+export type VoiceState = "idle" | "starting" | "listening" | "transcribing" | "polishing";
 
 /** Stop after this long without new speech (native) and never record longer than MAX_MS. */
 export const SILENCE_MS = 8000;
 export const MAX_MS = 120_000;
+/** Longest wait for the clean-up before falling back to the local rules, so the composer never hangs. */
+export const POLISH_TIMEOUT_MS = 6000;
+
+/** Cleans up a dictation with `refine`, falling back to the local rules on error or timeout. */
+export async function polish(text: string, context: string, refine?: ((text: string, context: string) => Promise<Dictation>) | null): Promise<Dictation> {
+  const local = { text: tidyDictation(text), original: text };
+  if (!refine) return local;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      refine(text, context),
+      new Promise<Dictation>((resolve) => {
+        timer = setTimeout(() => resolve(local), POLISH_TIMEOUT_MS);
+      }),
+    ]);
+  } catch {
+    return local;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // Minimal typing for the Web Speech recognition API (not in TypeScript's DOM lib).
 interface RecognitionResult {
@@ -104,17 +130,23 @@ export function voiceErrorMessage(code: string): string | null {
 interface Options {
   /** Live transcript for this dictation (replaces the previous call's text, not appended). */
   onTranscript: (text: string, final: boolean) => void;
+  /** The dictation after clean-up, with what was actually recognised (for undo). Empty text: nothing meaningful was said. */
+  onPolished: (dictation: Dictation) => void;
   onError: (message: string) => void;
-  /** Server fallback (API mode): returns the transcript of a recording. */
-  transcribe?: ((audio: Blob, language?: string) => Promise<string>) | null;
+  /** Server fallback (API mode): transcribes a recording and cleans it up in one request. */
+  transcribe?: ((audio: Blob, language?: string, context?: string) => Promise<Dictation>) | null;
+  /** Cleans up text from the browser's own recognition. Without it, local rules are used. */
+  refine?: ((text: string, context: string) => Promise<Dictation>) | null;
+  /** What was already typed before dictating (context for the clean-up). */
+  context?: () => string;
 }
 
-export function useVoiceInput({ onTranscript, onError, transcribe }: Options) {
+export function useVoiceInput({ onTranscript, onPolished, onError, transcribe, refine, context }: Options) {
   const [state, setState] = useState<VoiceState>("idle");
   const [engine] = useState<VoiceEngine | null>(() => voiceEngine(Boolean(transcribe)));
-  const cb = useRef({ onTranscript, onError, transcribe });
+  const cb = useRef({ onTranscript, onPolished, onError, transcribe, refine, context });
   useEffect(() => {
-    cb.current = { onTranscript, onError, transcribe };
+    cb.current = { onTranscript, onPolished, onError, transcribe, refine, context };
   });
   const recognition = useRef<Recognition | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
@@ -147,9 +179,11 @@ export function useVoiceInput({ onTranscript, onError, transcribe }: Options) {
       setState("listening");
       armSilence();
     };
+    let heard = "";
     r.onresult = (e) => {
       armSilence();
       const { text, final } = transcriptOf(e.results);
+      heard = text;
       cb.current.onTranscript(text, final);
     };
     r.onerror = (e) => {
@@ -159,7 +193,17 @@ export function useVoiceInput({ onTranscript, onError, transcribe }: Options) {
     r.onend = () => {
       clearTimers();
       recognition.current = null;
-      setState("idle");
+      if (!heard.trim() || disposed.current) {
+        setState("idle");
+        return;
+      }
+      setState("polishing");
+      void polish(heard, cb.current.context?.() ?? "", cb.current.refine).then((d) => {
+        if (!disposed.current) {
+          cb.current.onPolished(d);
+          setState("idle");
+        }
+      });
     };
     recognition.current = r;
     timers.current.max = setTimeout(() => r.stop(), MAX_MS);
@@ -169,7 +213,8 @@ export function useVoiceInput({ onTranscript, onError, transcribe }: Options) {
   const startServer = async () => {
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      // The browser's own noise suppression, echo cancellation and gain control clean up the recording itself.
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
     } catch (e) {
       setState("idle");
       cb.current.onError(voiceErrorMessage((e as DOMException).name) ?? "Couldn't start the microphone.");
@@ -192,9 +237,9 @@ export function useVoiceInput({ onTranscript, onError, transcribe }: Options) {
       }
       setState("transcribing");
       try {
-        const text = await cb.current.transcribe!(blob, (navigator.language || "en").slice(0, 2).toLowerCase());
-        if (text) cb.current.onTranscript(text, true);
-        else cb.current.onError("Pramaan didn't catch that. Try speaking a little closer to the microphone.");
+        const d = await cb.current.transcribe!(blob, (navigator.language || "en").slice(0, 2).toLowerCase(), cb.current.context?.() ?? "");
+        if (d.text) cb.current.onPolished(d);
+        else cb.current.onError("Pramaan didn't catch a question. Try again a little closer to the microphone, somewhere quieter.");
       } catch (e) {
         cb.current.onError(e instanceof Error ? e.message : "Couldn't transcribe your recording.");
       } finally {
@@ -231,5 +276,7 @@ export function useVoiceInput({ onTranscript, onError, transcribe }: Options) {
     [],
   );
 
-  return { supported: engine !== null, engine, state, active: state !== "idle", start, stop, toggle: () => (state === "idle" ? start() : stop()) };
+  // "active" = holding the microphone; polishing is finishing up and can't be stopped.
+  const active = state === "starting" || state === "listening" || state === "transcribing";
+  return { supported: engine !== null, engine, state, active, start, stop, toggle: () => (state === "idle" ? start() : stop()) };
 }

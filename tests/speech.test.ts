@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RESEARCH } from "@/data/research";
 import { buildNarration, chunkText, estimateMinutes, MAX_CHUNK, sectionStart, speakable } from "@/lib/speech/narration";
 import { appendDictation, transcriptOf, voiceEngine, voiceErrorMessage } from "@/lib/speech/recognition";
@@ -97,5 +97,48 @@ describe("dictation", () => {
   });
   it("has no engine outside a browser", () => {
     expect(voiceEngine(true)).toBeNull();
+  });
+});
+
+describe("dictation clean-up", () => {
+  it("matches the API's fallback rules (backend/tests/test_speech.py)", async () => {
+    const { tidyDictation, isSilence } = await import("@/lib/speech/tidy");
+    expect(tidyDictation("okay so like um what are the the latest solid state battery results")).toBe("What are the latest solid state battery results?");
+    expect(tidyDictation("[Music] compare RAG and long context models")).toBe("Compare RAG and long context models.");
+    expect(tidyDictation("uh how do heat pumps uh work in in cold weather")).toBe("How do heat pumps work in cold weather?");
+    expect(tidyDictation("Thank you.")).toBe("");
+    expect(isSilence("Thanks for watching!") && isSilence("[BLANK_AUDIO]") && !isSilence("Thank you notes etiquette")).toBe(true);
+  });
+
+  it("polish uses the model's clean-up, and the local rules if it fails or is slow", async () => {
+    const { polish, POLISH_TIMEOUT_MS } = await import("@/lib/speech/recognition");
+    const good = async (t: string) => ({ text: "How effective are GLP-1 drugs?", original: t });
+    expect(await polish("um how effective are glp one drugs", "", good)).toEqual({ text: "How effective are GLP-1 drugs?", original: "um how effective are glp one drugs" });
+    const broken = async () => {
+      throw new Error("network");
+    };
+    expect((await polish("um is it uh true", "", broken)).text).toBe("Is it true?");
+    expect((await polish("um is it uh true", "", null)).text).toBe("Is it true?");
+    vi.useFakeTimers();
+    const slow = polish("um is it uh true", "", () => new Promise(() => {}));
+    await vi.advanceTimersByTimeAsync(POLISH_TIMEOUT_MS + 1);
+    expect((await slow).text).toBe("Is it true?");
+    vi.useRealTimers();
+  });
+});
+
+describe("narration of a research paper", () => {
+  it("reads the title, abstract and numbered sections, announcing tables and figures by caption", () => {
+    const paper = RESEARCH.find((r) => r.id === "r-glp1-cardio")!;
+    const chunks = buildNarration(paper);
+    const text = chunks.map((c) => c.text);
+    expect(text[0]).toBe("Cardiovascular outcomes of GLP-1 receptor agonists in adults without diabetes.");
+    expect(text).toContain("Abstract.");
+    expect(text).toContain("Section 1: Introduction.");
+    expect(text.some((t) => t.startsWith("Table 1: Reported effects of GLP-1"))).toBe(true);
+    expect(text.some((t) => t.startsWith("Figure 1: From trial efficacy to population benefit"))).toBe(true);
+    expect(text.some((t) => /\[\d\]/.test(t))).toBe(false); // citation markers are not read aloud
+    const ids = [...new Set(chunks.map((c) => c.sectionId))];
+    expect(ids).toEqual(["top", "abstract", "section-1", "section-2", "section-3", "section-4", "limitations", "section-5", "end"]); // limitations before the conclusion
   });
 });

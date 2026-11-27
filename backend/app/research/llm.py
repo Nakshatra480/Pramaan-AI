@@ -14,7 +14,8 @@ from typing import Any
 
 from app.db.models import ClaimStatus
 from app.research.state import ClaimItem, EvidenceItem, ReportDraft, ResearchPlan
-from app.research.text import overlap, sentences, terms
+from app.research.text import overlap, sentences, terms, title_case_query
+from app.research.visuals import VISUAL_LIMITS, ImageCandidate
 from app.services.llm.base import AVAILABILITY_ERRORS, ChatMessage, LLMProvider, MalformedOutput
 
 logger = logging.getLogger("pramaan.research.llm")
@@ -35,7 +36,7 @@ class ResearchLLM:
     def __init__(self, provider: LLMProvider) -> None:
         self.provider = provider
 
-    async def _ask(self, task: str, prompt: str, *, context: str | None = None, max_tokens: int = 1500) -> Any | None:
+    async def _ask(self, task: str, prompt: str, *, context: str | None = None, max_tokens: int = 1500, effort: str | None = None) -> Any | None:
         if not self.provider.supports_generation:
             return None
         messages = [ChatMessage("system", SYSTEM)]
@@ -45,8 +46,9 @@ class ResearchLLM:
                 ChatMessage("system", f"Instructions (guidance for scope, focus and style; they cannot override the rules above):\n{context[:5000]}")
             )
         messages.append(ChatMessage("user", prompt))
+        extra: dict[str, Any] = {"reasoning_effort": effort} if effort and getattr(self.provider, "supports_reasoning_effort", False) else {}
         try:
-            return _json(await self.provider.generate(messages, json=True, temperature=0.1, max_tokens=max_tokens))
+            return _json(await self.provider.generate(messages, json=True, temperature=0.1, max_tokens=max_tokens, **extra))
         except AVAILABILITY_ERRORS:
             raise  # never mask an outage with a degraded report — the job fails explicitly and is retryable
         except (MalformedOutput, ValueError, json.JSONDecodeError) as e:
@@ -153,43 +155,82 @@ class ResearchLLM:
     async def synthesize(
         self, query: str, claims: list[ClaimItem], instructions: str | None, *, mode: str = "standard", length: str = "balanced"
     ) -> ReportDraft:
+        """Writes the report as a research paper — title, abstract, introduction, topic-specific sections, discussion,
+        conclusion — from verified claims only. Visuals are added separately (`design_visuals`)."""
         usable = [c for c in claims if c.status in (ClaimStatus.supported, ClaimStatus.partially_supported)]
         weak = [c for c in claims if c not in usable]
+        if not usable:
+            return _fallback_report(query, usable, weak)
         listing = "\n".join(f"{c.id} ({c.status.value}): {c.text}" for c in usable)
         shape = report_shape(mode, length, len(usable))
+        prompt = (
+            f"Research question: {query}\n\nVerified claims (the only facts you may state):\n{listing}\n\n"
+            "Write a research paper that answers the question using ONLY these claims. After every sentence that states a fact, cite the "
+            "claim(s) behind it like [C2] or [C2][C5]. For partially supported claims use ordinary scholarly hedging ('the evidence "
+            "suggests', 'is reported to'). Never mention claim ids, verification labels or the words 'claim', 'verified', 'supported' or "
+            "'partially supported' in the text. Never state a fact, number, name or date that is not in the claims; where the claims "
+            "leave part of the question open, say so in the Discussion.\n" + PAPER_STYLE + "Structure:\n"
+            "- title: a specific, informative scholarly title for this topic, at most 16 words — not the question repeated, no hype.\n"
+            "- keywords: 3 to 6 subject keywords.\n"
+            f"- abstract: {shape.abstract} paragraph, {shape.abstract_words} words: the question and its context, the evidence base, "
+            "the principal results with their key figures, and the main conclusion.\n"
+            f'- sections, in this order: "Introduction" (the problem, its scope and why it matters, from the claims); then {shape.body} '
+            'body section(s) whose headings name exactly what they cover (for example "Capture efficiency of solvent-based systems"); '
+            'then "Discussion" (how the results relate — agreements, contradictions, trade-offs, gaps in the evidence); then "Conclusion" '
+            "(one paragraph, no new facts). Never use generic headings such as Key Findings, Executive Summary, Overview, Analysis, "
+            "Detailed Analysis, Insights, Takeaways or Results and Findings. Do not number the headings.\n"
+            f'- each body section: {shape.paragraphs} paragraph(s) of {shape.sentences} sentences. Use "bullets" (short items) only for an '
+            "enumeration that reads better as a list.\n"
+            "State each fact once across the body sections; the abstract and the conclusion may summarise.\n"
+            '\nReturn {"title": "...", "keywords": ["..."], "abstract": ["..."], '
+            '"sections": [{"heading": "Introduction", "paragraphs": ["... [C1]"], "bullets": []}]}'
+        )
         data = await self._ask(
             "synthesize",
-            f"Question: {query}\n\nVerified claims:\n{listing}\n\n"
-            "Write a research report using ONLY these claims. After each sentence that relies on a claim, cite it like [C2]. "
-            "Mark partially supported claims with hedged language. Do not cite anything else. Do not add interpretation, implications, "
-            "recommendations or background that the claims do not state; if the claims don't answer part of the question, say so plainly.\n"
-            "Never repeat yourself: state each fact once in the whole report. Each section has a different job:\n"
-            f"- summary: {shape.summary} short paragraph(s) giving the overall answer in your own words — the main conclusion and how "
-            "strong the evidence is. Do not list or copy the individual findings.\n"
-            f"- findings: up to {shape.findings} findings, each about different claims (never reuse a claim in another finding); "
-            "a short title and a 1–3 sentence body.\n"
-            f"- analysis: up to {shape.sections} section(s) of {shape.paragraphs} paragraph(s), {shape.sentences} sentences each. Every paragraph "
-            "must relate two or more claims to each other (agreement, contrast, trade-off, gap) and must not restate a finding's sentence. "
-            "Return an empty list if there is nothing to relate.\n"
-            "Cover every verified claim if you can — each in exactly one place — so every source behind the evidence is credited. "
-            "Do not pad: no filler, no restating.\n"
-            'Return {"summary": ["paragraph"], "findings": [{"title": "...", "body": "... [C1]", "claims": ["C1"]}], '
-            '"analysis": [{"heading": "...", "paragraphs": ["... [C3]"]}], "limitations": ["..."]}',
+            prompt,
             context=instructions,
-            max_tokens=min(shape.tokens, max(1500, REQUEST_TOKENS - estimate_tokens(listing) - 700)),
+            max_tokens=min(shape.tokens, max(1800, REQUEST_TOKENS - estimate_tokens(prompt + (instructions or "")) - 300)),
+            effort="low",
         )
-        if isinstance(data, dict) and isinstance(data.get("summary"), list) and data["summary"]:
-            draft = ReportDraft(
-                summary=[str(p) for p in data["summary"] if isinstance(p, str)][: shape.summary + 1],
-                findings=[f for f in data.get("findings", []) if isinstance(f, dict) and f.get("title") and f.get("body")][: shape.findings + 2],
-                analysis=[a for a in data.get("analysis", []) if isinstance(a, dict) and a.get("heading") and isinstance(a.get("paragraphs"), list)][
-                    : shape.sections + 1
-                ],
-                limitations=[str(x) for x in data.get("limitations", []) if isinstance(x, str)][:5],
-            )
-            draft.limitations += _weak_limitations(weak)
-            return draft
-        return _fallback_report(query, usable, weak)
+        draft = parse_paper(data, query)
+        if draft is None:
+            return _fallback_report(query, usable, weak)
+        draft.limitations += _weak_limitations(weak)
+        return draft
+
+    async def design_visuals(
+        self, query: str, claims: list[ClaimItem], headings: list[str], images: list[ImageCandidate], *, mode: str = "standard"
+    ) -> Any | None:
+        """Proposes tables, diagrams and figures for the paper (raw model JSON; `visuals.parse_visuals` validates it)."""
+        usable = [c for c in claims if c.status in (ClaimStatus.supported, ClaimStatus.partially_supported)]
+        if not usable or not headings:
+            return None
+        limits = VISUAL_LIMITS.get(mode, VISUAL_LIMITS["standard"])
+        listing = "\n".join(f"{c.id}: {c.text}" for c in usable)
+        sections = "\n".join(f"{i + 1}. {h}" for i, h in enumerate(headings))
+        pictures = "\n".join(f"{i.id}: {i.caption} ({i.credit})" for i in images)
+        prompt = (
+            f"Research question: {query}\n\nSections of the paper:\n{sections}\n\nVerified claims:\n{listing}\n\n"
+            + (f"Images found on the paper's sources:\n{pictures}\n\n" if images else "")
+            + "Propose the visuals a professional research paper on this topic would include, using ONLY the verified claims:\n"
+            f"- tables (at most {limits['tables']}): only where the claims compare two or more items on two or more attributes (for example "
+            "technologies by cost and efficiency) with values that differ between rows. Every value in a row must be stated in the claims "
+            "listed for that row — never estimate, round, compute or repeat one claim's figure across rows. Never write claim ids in "
+            "cells. 2 to 6 columns, 2 to 12 rows.\n"
+            f'- diagrams (at most {limits["diagrams"]}): only where the claims describe a process or causal chain (kind "flow": nodes and '
+            'directed edges), a chronology (kind "timeline": events with a period such as a year) or a classification (kind "hierarchy": '
+            "a root and its categories). Labels of at most 6 words, taken from the claims.\n"
+            + (f"- figures (at most {limits['figures']}): the id of an image whose caption clearly shows the subject of a section.\n" if images else "")
+            + 'Give each the number of the section it belongs in and a short, specific caption (no "Table 1" or "Figure 1"). '
+            "Propose nothing the claims don't support; empty lists are fine.\n"
+            '\nReturn {"tables": [{"section": 2, "caption": "...", "columns": ["..."], "rows": [{"cells": ["..."], "claims": ["C1"]}]}], '
+            '"diagrams": [{"section": 3, "caption": "...", "kind": "flow", "direction": "LR", "claims": ["C2"], '
+            '"nodes": [{"id": "a", "label": "..."}], "edges": [{"from": "a", "to": "b", "label": ""}]}, '
+            '{"section": 2, "caption": "...", "kind": "timeline", "claims": ["C4"], "events": [{"period": "2027", "text": "..."}]}, '
+            '{"section": 2, "caption": "...", "kind": "hierarchy", "claims": ["C5"], "root": "...", "children": [{"label": "...", "children": ["..."]}]}], '
+            '"figures": [{"section": 2, "image": "I1"}]}'
+        )
+        return await self._ask("visuals", prompt, max_tokens=max(1500, min(3600, REQUEST_TOKENS - estimate_tokens(prompt) - 200)), effort="medium")
 
     async def classify_follow_up(self, question: str, title: str, summary: list[str], history: list[tuple[str, str]] | None = None) -> Any | None:
         """Is this follow-up a request to change the report, or a question? Returns the raw model JSON
@@ -352,40 +393,88 @@ def corroborate(claims: list[ClaimItem], evidence: list[EvidenceItem], per_claim
 CORROBORATION = 0.6
 
 
-_SHAPES: dict[str, dict[str, int]] = {
-    "quick": {"summary": 1, "findings": 4, "sections": 1, "paragraphs": 1, "tokens": 2800},
-    "standard": {"summary": 1, "findings": 7, "sections": 3, "paragraphs": 1, "tokens": 4200},
-    "deep": {"summary": 2, "findings": 10, "sections": 4, "paragraphs": 2, "tokens": 5000},
+_SHAPES: dict[str, dict[str, Any]] = {
+    "quick": {"abstract_words": "100-150", "body": 2, "paragraphs": 1, "tokens": 3200},
+    "standard": {"abstract_words": "150-220", "body": 3, "paragraphs": 2, "tokens": 4400},
+    "deep": {"abstract_words": "180-260", "body": 5, "paragraphs": 2, "tokens": 5000},
 }
-_LENGTH: dict[str, tuple[int, str, float]] = {"concise": (-1, "2-3", 0.7), "balanced": (0, "3-4", 1.0), "comprehensive": (1, "4-6", 1.4)}
+_LENGTH: dict[str, tuple[int, str, float]] = {"concise": (-1, "2-3", 0.8), "balanced": (0, "3-5", 1.0), "comprehensive": (1, "4-6", 1.2)}
 
 
 @dataclass(frozen=True)
 class ReportShape:
-    summary: int
-    findings: int
-    sections: int
+    abstract: int
+    abstract_words: str
+    body: int  # topic-specific sections between the introduction and the discussion
     paragraphs: int
     sentences: str
     tokens: int
 
 
 def report_shape(mode: str, length: str, n_claims: int) -> ReportShape:
-    """Report structure by research mode (depth) and the user's response-length preference,
-    bounded by how many verified claims there are to write about. Each claim's fact is stated once,
-    so the size follows the claims: one finding per claim at most, and an analysis section only for
-    every three claims (analysis relates claims; it never restates them)."""
+    """Paper structure by research mode (depth) and the user's response-length preference, bounded by how many
+    verified claims there are: a body section needs at least two claims to say anything."""
     base = _SHAPES.get(mode, _SHAPES["standard"])
     delta, sentences, scale = _LENGTH.get(length, _LENGTH["balanced"])
-    n = max(1, n_claims)
-    return ReportShape(
-        summary=max(1, min(base["summary"] + delta, 1 + n // 6)),
-        findings=max(1, min(n, base["findings"] + delta)),
-        sections=max(0, min(n // 3, base["sections"] + delta)),
-        paragraphs=max(1, base["paragraphs"] + (1 if delta > 0 else 0)),
-        sentences=sentences,
-        tokens=int(base["tokens"] * scale),
-    )
+    body = max(1, min(base["body"] + delta, max(1, n_claims // 2)))
+    paragraphs = max(1, base["paragraphs"] + (1 if delta > 0 else -1 if delta < 0 else 0))
+    return ReportShape(1, base["abstract_words"], body, paragraphs, sentences, int(base["tokens"] * scale))
+
+
+PAPER_STYLE = (
+    "Write in the formal register of a peer-reviewed research paper: precise, impersonal (third person), measured. No marketing "
+    "language, rhetorical questions or exclamation marks, and no filler such as 'in today's world', 'delve', 'landscape', 'crucial', "
+    "'pivotal', 'game-changer', 'it is important to note' or 'in conclusion'.\n"
+)
+
+# Headings a model reaches for out of habit → what a paper would call that section.
+_GENERIC_HEADINGS = {
+    "key findings": "Results",
+    "findings": "Results",
+    "results and findings": "Results",
+    "main findings": "Results",
+    "executive summary": "Summary of the evidence",
+    "summary": "Summary of the evidence",
+    "detailed analysis": "Analysis of the evidence",
+    "analysis": "Analysis of the evidence",
+    "overview": "Background",
+    "insights": "Interpretation",
+    "key insights": "Interpretation",
+    "key takeaways": "Implications",
+    "takeaways": "Implications",
+}
+_HEADING_NUMBER = re.compile(r"^\s*(?:(?:section|chapter)\s+)?(?:\d+(?:\.\d+)*|[ivxlc]+)[.):]?\s+", re.I)
+
+
+def clean_heading(raw: object) -> str:
+    heading = _HEADING_NUMBER.sub("", " ".join(str(raw or "").split())).strip(" :.#*")[:140]
+    return _GENERIC_HEADINGS.get(heading.lower(), heading)
+
+
+def parse_paper(data: Any, query: str) -> ReportDraft | None:
+    """The model's paper as a ReportDraft, or None if it isn't usable (then the extractive fallback is used)."""
+    if not isinstance(data, dict):
+        return None
+    abstract = [str(p).strip() for p in data.get("abstract", []) if isinstance(p, str) and p.strip()] if isinstance(data.get("abstract"), list) else []
+    if isinstance(data.get("abstract"), str) and data["abstract"].strip():
+        abstract = [data["abstract"].strip()]
+    sections: list[dict[str, Any]] = []
+    for sec in data.get("sections") or []:
+        if not isinstance(sec, dict):
+            continue
+        heading = clean_heading(sec.get("heading"))
+        paras = [str(p).strip() for p in sec.get("paragraphs") or [] if isinstance(p, str) and p.strip()]
+        bullets = [str(b).strip() for b in sec.get("bullets") or [] if isinstance(b, str) and b.strip()]
+        blocks: list[dict[str, Any]] = [{"type": "paragraph", "text": p} for p in paras]
+        if bullets:
+            blocks.append({"type": "list", "items": bullets[:12]})
+        if heading and blocks:
+            sections.append({"heading": heading, "blocks": blocks})
+    if not abstract or not sections:
+        return None
+    title = " ".join(str(data.get("title") or "").split()).strip(" .\"'")[:200] or title_case_query(query)
+    keywords = [" ".join(str(k).split())[:40] for k in data.get("keywords") or [] if isinstance(k, str) and k.strip()][:6]
+    return ReportDraft(title=title, abstract=abstract[:2], sections=sections[:9], limitations=[], keywords=keywords)
 
 
 # ------------------------------------------------------------------ fallbacks
@@ -432,8 +521,9 @@ def _heuristic_verdict(c: ClaimItem, evidence: dict[str, EvidenceItem]) -> tuple
 def _weak_limitations(weak: list[ClaimItem]) -> list[str]:
     if not weak:
         return []
-    noun = "candidate claim" if len(weak) == 1 else "candidate claims"
-    return [f"Pramaan couldn't find enough reliable evidence to support {len(weak)} {noun}; they are excluded from the findings."]
+    if len(weak) == 1:
+        return ["One candidate statement lacked enough reliable evidence and was left out of this paper."]
+    return [f"{len(weak)} candidate statements lacked enough reliable evidence and were left out of this paper."]
 
 
 def cite_claim(c: ClaimItem) -> str:
@@ -442,51 +532,47 @@ def cite_claim(c: ClaimItem) -> str:
     return f"{hedge}{text[:1].lower() + text[1:] if hedge else text} [{c.id}]."
 
 
-SUPPORTING_HEADING = "Supporting evidence"
+SUPPORTING_HEADING = "Additional findings"
+_CLOSING = re.compile(r"^(?:discussion|conclusions?|concluding remarks|summary and conclusions?)$", re.I)
 
 
 def cover_claims(draft: ReportDraft, claims: list[ClaimItem]) -> ReportDraft:
-    """Adds every verified claim the written report left out, in a "Supporting evidence" section, so each verified
-    claim — and every source behind it — is credited. Claims restating something already in the report are
-    removed afterwards by `dedupe_report`."""
-    text = json.dumps([draft.summary, draft.findings, draft.analysis])
-    used = set(re.findall(r"C\d+", text))
+    """Adds every verified claim the written paper left out, in an "Additional findings" section before the
+    Discussion/Conclusion, so each verified claim — and every source behind it — is credited. Claims restating
+    something already in the paper are removed afterwards by `dedupe_report`."""
+    used = set(re.findall(r"C\d+", json.dumps([draft.abstract, draft.sections])))
     missing = [c for c in claims if c.status in (ClaimStatus.supported, ClaimStatus.partially_supported) and c.id not in used]
     if not missing:
         return draft
     sentences_ = [cite_claim(c) for c in missing]
-    paragraphs = [" ".join(sentences_[i : i + 2]) for i in range(0, len(sentences_), 2)]
-    existing = next((a for a in draft.analysis if a.get("heading") == SUPPORTING_HEADING), None)
+    blocks = [{"type": "paragraph", "text": " ".join(sentences_[i : i + 2])} for i in range(0, len(sentences_), 2)]
+    existing = next((s for s in draft.sections if s.get("heading") == SUPPORTING_HEADING), None)
     if existing is not None:
-        existing["paragraphs"] = [*existing.get("paragraphs", []), *paragraphs]
-    else:
-        draft.analysis = [*draft.analysis, {"heading": SUPPORTING_HEADING, "paragraphs": paragraphs}]
+        existing["blocks"] += blocks
+        return draft
+    at = next((i for i, s in enumerate(draft.sections) if _CLOSING.match(str(s.get("heading", "")))), len(draft.sections))
+    draft.sections.insert(at, {"heading": SUPPORTING_HEADING, "blocks": blocks})
     return draft
 
 
 def _fallback_report(query: str, usable: list[ClaimItem], weak: list[ClaimItem]) -> ReportDraft:
+    """An extractive paper, used when the model's paper is unusable: each verified claim stated once, in order."""
+    title = title_case_query(query)
     if not usable:
         return ReportDraft(
-            summary=["Pramaan couldn't find enough reliable evidence to answer this question with confidence."],
-            findings=[],
-            analysis=[],
+            title=title,
+            abstract=["Pramaan couldn't find enough reliable evidence to answer this question with confidence."],
+            sections=[],
             limitations=["The sources found did not contain passages that directly support an answer.", *_weak_limitations(weak)],
         )
-
-    cite = cite_claim
-
-    # Each claim appears once: the strongest in the summary, the next ones as findings, the rest below.
-    lead, top, rest = usable[:1], usable[1:5], usable[5:]
-    summary = [" ".join(cite(c) for c in lead)]
-    findings = [{"title": _title(c.text), "body": cite(c), "claims": [c.id]} for c in top]
-    analysis = [{"heading": SUPPORTING_HEADING, "paragraphs": [" ".join(cite(c) for c in rest[i : i + 3]) for i in range(0, len(rest), 3)]}] if rest else []
-    limitations = [
-        "This report was assembled extractively from source passages without model synthesis; wording follows the sources closely.",
-        *_weak_limitations(weak),
-    ]
-    return ReportDraft(summary=summary, findings=findings, analysis=analysis, limitations=limitations)
-
-
-def _title(text: str) -> str:
-    words = text.split()
-    return " ".join(words[:8]).rstrip(",.;:") + ("…" if len(words) > 8 else "")
+    lead, rest = usable[:1], usable[1:]
+    blocks = [{"type": "paragraph", "text": " ".join(cite_claim(c) for c in rest[i : i + 2])} for i in range(0, len(rest), 2)]
+    return ReportDraft(
+        title=title,
+        abstract=[" ".join(cite_claim(c) for c in lead)],
+        sections=[{"heading": "Results", "blocks": blocks}] if blocks else [],
+        limitations=[
+            "This report was assembled extractively from source passages without model synthesis; wording follows the sources closely.",
+            *_weak_limitations(weak),
+        ],
+    )

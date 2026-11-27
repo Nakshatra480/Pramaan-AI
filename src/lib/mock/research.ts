@@ -340,7 +340,11 @@ function complete(id: string) {
     if (r.report && change) {
       // Demo stand-in for regeneration: honour the requested length.
       const length = revisionLength(change);
-      if (length === "concise") Object.assign(r.report, { summary: r.report.summary.slice(0, 1), findings: r.report.findings.slice(0, 3), analysis: r.report.analysis.slice(0, 1) });
+      if (length === "concise") {
+        Object.assign(r.report, { summary: r.report.summary.slice(0, 1), findings: r.report.findings.slice(0, 3), analysis: r.report.analysis.slice(0, 1) });
+        // A shorter paper keeps its introduction and conclusion and drops the middle sections.
+        if (r.report.sections && r.report.sections.length > 3) r.report.sections = [r.report.sections[0], r.report.sections[1], r.report.sections[r.report.sections.length - 1]];
+      }
       r.report.limitations = [...r.report.limitations, `Demo mode: this revision reuses the original evidence. Requested changes — “${change}”.`];
     }
     d.activity.unshift({

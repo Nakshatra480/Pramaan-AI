@@ -3,7 +3,8 @@
  * short chunks. Short chunks keep browser speech engines reliable (Chrome cuts off long utterances),
  * let playback pause and resume at a sentence, and let the page show which section is being read.
  */
-import type { ClaimStatus, Research } from "@/types";
+import { paperParts, visualNumbers } from "@/lib/paper";
+import { isPaper, type ClaimStatus, type Research } from "@/types";
 
 export interface NarrationChunk {
   /** Report section being read; matches the section's element id ("summary", "findings", …). */
@@ -65,7 +66,11 @@ function ensureStop(s: string) {
   return /[.!?…]["”’)]*$/.test(s) ? s : `${s}.`;
 }
 
-/** The whole report as narration chunks: title, summary, findings, analysis, evidence and limitations. */
+/**
+ * The whole report as narration chunks. A paper: title, question, abstract and each numbered section (tables
+ * and figures are announced by their captions). A legacy report: title, summary, findings, analysis, evidence
+ * and limitations.
+ */
 export function buildNarration(research: Research): NarrationChunk[] {
   const report = research.report;
   if (!report) return [];
@@ -75,6 +80,29 @@ export function buildNarration(research: Research): NarrationChunk[] {
     if (!clean) return;
     for (const piece of chunkText(ensureStop(clean))) out.push({ sectionId, sectionLabel, text: piece });
   };
+
+  if (isPaper(report)) {
+    add("top", "Title", report.title || research.title);
+    add("top", "Title", `The research question was: ${research.query}`);
+    if (report.summary.length) {
+      add("abstract", "Abstract", "Abstract.");
+      report.summary.forEach((p) => add("abstract", "Abstract", p));
+    }
+    const parts = paperParts(report);
+    const labels = visualNumbers(parts);
+    for (const part of parts) {
+      const label = `${part.number}. ${part.heading}`;
+      add(part.id, label, `Section ${part.number}: ${part.heading}.`);
+      part.limitations?.forEach((l) => add(part.id, label, l));
+      for (const b of part.blocks) {
+        if (b.type === "paragraph") add(part.id, label, b.text);
+        else if (b.type === "list") b.items.forEach((item) => add(part.id, label, item));
+        else add(part.id, label, `${labels.get(b)}: ${b.caption}`); // tables, diagrams and figures by caption
+      }
+    }
+    add("end", "End", "End of report.");
+    return out;
+  }
 
   add("top", "Introduction", research.title);
   add("top", "Introduction", `The question was: ${research.query}`);

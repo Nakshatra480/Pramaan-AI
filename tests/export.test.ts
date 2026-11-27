@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildExportDocument, inlines, plain } from "@/lib/export/document";
+import { answerText, buildExportDocument, inlines, plain } from "@/lib/export/document";
 import { toDocx } from "@/lib/export/docx";
 import { toMarkdown } from "@/lib/export/markdown";
 import { toPrintHtml } from "@/lib/export/pdf";
@@ -106,5 +106,80 @@ describe("export document", () => {
     expect(String.fromCharCode(bytes[0], bytes[1])).toBe("PK");
     const text = new TextDecoder("latin1").decode(bytes);
     expect(text).toContain("word/document.xml");
+  });
+});
+
+describe("export of a research paper", () => {
+  const paperReport = {
+    ...research,
+    title: "solid state batteries",
+    report: {
+      format: "paper",
+      title: "Production timelines of solid-state batteries",
+      keywords: ["solid-state batteries", "Toyota"],
+      summary: ["Toyota targets 2027 [1]."],
+      findings: [],
+      analysis: [],
+      sections: [
+        { heading: "Introduction", blocks: [{ type: "paragraph", text: "Context [1]." }] },
+        {
+          heading: "Manufacturer plans",
+          blocks: [
+            { type: "paragraph", text: "Plans differ [2]." },
+            { type: "table", caption: "Announced targets", columns: ["Maker", "Year | note"], rows: [["Toyota", "2027 [1]"], ["Other", "2030 [2]"]] },
+            { type: "diagram", caption: "Path to production [1]", code: 'flowchart LR\n    n1["Pilot"] --> n2["Scale"]' },
+            { type: "figure", caption: "A pilot line", url: "https://img.example/p.jpg", credit: "Journal B", sourceUrl: "https://b.example/page", sourceIndex: 2 },
+          ],
+        },
+        { heading: "Conclusion", blocks: [{ type: "paragraph", text: "Soon [1]." }] },
+      ],
+      limitations: ["Few sources."],
+      citations: [
+        { index: 1, sourceId: "a" },
+        { index: 2, sourceId: "b" },
+      ],
+    },
+  } as unknown as Research;
+  const d = buildExportDocument(paperReport, sources);
+
+  it("numbers sections, puts limitations before the conclusion and labels visuals", () => {
+    expect(d.paper && d.title === "Production timelines of solid-state batteries").toBe(true);
+    expect(d.sections.map((s) => `${s.number} ${s.heading}`)).toEqual(["1 Introduction", "2 Manufacturer plans", "3 Limitations", "4 Conclusion"]);
+    const labels = d.sections[1].blocks.map((b) => ("label" in b ? b.label : b.kind));
+    expect(labels).toEqual(["paragraph", "Table 1", "Figure 1", "Figure 2"]);
+    expect(d.keywords).toEqual(["solid-state batteries", "Toyota"]);
+  });
+
+  it("markdown: abstract, numbered sections, a GFM table, a Mermaid block and a credited figure", () => {
+    const md = toMarkdown(d);
+    expect(md).toContain("## Abstract\n\nToyota targets 2027 [1].");
+    expect(md).toContain("## 2. Manufacturer plans");
+    expect(md).toContain("**Table 1.** Announced targets\n\n| Maker | Year \\| note |\n| --- | --- |\n| Toyota | 2027 [1] |");
+    expect(md).toContain('```mermaid\nflowchart LR\n    n1["Pilot"] --> n2["Scale"]\n```\n\n*Figure 1. Path to production [1]*');
+    expect(md).toContain("![A pilot line](<https://img.example/p.jpg>)\n\n*Figure 2. A pilot line. Source: [Journal B](<https://b.example/page>) [2]*");
+    expect(md).toContain("## 3. Limitations\n\n- Few sources.");
+    expect(md).toContain("## References");
+    expect(md).not.toMatch(/Executive summary|Key findings/);
+  });
+
+  it("print document: abstract, data table and figure; a diagram without its SVG is left out", () => {
+    const html = toPrintHtml(d);
+    expect(html).toContain("<h2>Abstract</h2>");
+    expect(html).toContain('<h2><span class="sn">2</span>Manufacturer plans</h2>');
+    expect(html).toContain('<table class="data"><thead><tr><th>Maker</th><th>Year | note</th></tr></thead>');
+    expect(html).toContain('<img src="https://img.example/p.jpg" alt="A pilot line" referrerpolicy="no-referrer">');
+    expect(html).not.toContain('class="diagram"');
+    const withSvg = toPrintHtml({ ...d, sections: d.sections.map((s) => ({ ...s, blocks: s.blocks.map((b) => (b.kind === "diagram" ? { ...b, svg: "<svg></svg>" } : b)) })) });
+    expect(withSvg).toContain('<div class="diagram"><svg></svg></div><figcaption><b>Figure 1.</b>');
+  });
+
+  it("word: a real .docx with the paper's sections and table", async () => {
+    const blob = await toDocx(d);
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    expect(String.fromCharCode(bytes[0], bytes[1])).toBe("PK");
+  });
+
+  it("copy answer: the abstract", () => {
+    expect(answerText(d)).toBe("Production timelines of solid-state batteries\n\nToyota targets 2027 [1].");
   });
 });

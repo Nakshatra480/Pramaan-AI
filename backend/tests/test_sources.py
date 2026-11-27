@@ -170,16 +170,14 @@ class ScriptedLLM(FakeProvider):
             return _j({"claims": [{"text": f"Claim {g[0][0]}: {g[0][1][:120]}", "evidence": [e for e, _ in g]} for g in groups if g]})
         if '"results"' in user:
             return _j({"results": [{"id": c, "status": "supported", "confidence": 0.9} for c in re.findall(r"^(C\d+):", user, re.M)]})
-        if "Verified claims:" in user:
+        if "Sections of the paper:" in user:
+            return _j({"tables": [], "diagrams": [], "figures": []})
+        if "Verified claims (the only facts" in user:
             claims = re.findall(r"^(C\d+) \(\w+\): (.*)$", user, re.M)
-            return _j(
-                {
-                    "summary": [f"{claims[0][1]} [{claims[0][0]}]"],
-                    "findings": [{"title": f"Finding {c}", "body": f"{t} [{c}]", "claims": [c]} for c, t in claims[1:]],
-                    "analysis": [],
-                    "limitations": [],
-                }
-            )
+            sections = [{"heading": "Introduction", "paragraphs": [f"{claims[0][1]} [{claims[0][0]}]"]}]
+            sections += [{"heading": f"Evidence on {t[:30]}", "paragraphs": [f"{t} [{c}]"]} for c, t in claims[1:]]
+            sections += [{"heading": "Discussion", "paragraphs": ["The evidence agrees."]}, {"heading": "Conclusion", "paragraphs": ["Summary."]}]
+            return _j({"title": "Humanoid robots in industry", "keywords": ["robots"], "abstract": [f"{claims[0][1]} [{claims[0][0]}]"], "sections": sections})
         return _j({})
 
 
@@ -303,8 +301,11 @@ def test_every_verified_claim_the_report_left_out_is_still_credited() -> None:
         ClaimItem(id="C3", text="Costs may fall after 2030", evidence_ids=["E3"], status=ClaimStatus.unsupported),
     ]
     evidence = [_ev(1, "a", "Toyota plans solid-state production in 2027."), _ev(2, "b", "Samsung prototypes reach 900 Wh/L energy density."), _ev(3, "c", "x")]
-    draft = cover_claims(ReportDraft(summary=["Toyota plans solid-state production in 2027 [C1]."], findings=[], analysis=[], limitations=[]), claims)
-    section = next(a for a in draft.analysis if a["heading"] == SUPPORTING_HEADING)
-    assert "[C2]" in section["paragraphs"][0] and "partially" in section["paragraphs"][0] and "C3" not in str(section)
+    sections = [{"heading": "Introduction", "blocks": [{"type": "paragraph", "text": "Toyota plans solid-state production in 2027 [C1]."}]}]
+    sections.append({"heading": "Conclusion", "blocks": [{"type": "paragraph", "text": "Done."}]})
+    draft = cover_claims(ReportDraft(title="t", abstract=["Toyota plans solid-state production in 2027 [C1]."], sections=sections, limitations=[]), claims)
+    assert [s["heading"] for s in draft.sections] == ["Introduction", SUPPORTING_HEADING, "Conclusion"]  # before the conclusion
+    text = draft.sections[1]["blocks"][0]["text"]
+    assert "[C2]" in text and "partially" in text and "C3" not in str(draft.sections)
     _, cites = map_report(draft, claims, evidence)
     assert {c.source_key for c in cites} == {"a", "b"}

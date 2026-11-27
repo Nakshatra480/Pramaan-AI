@@ -32,6 +32,7 @@ from app.research.progress import LeaseLost, ProgressReporter, ResearchCancelled
 from app.research.state import ChunkHit, ResearchState, SourceItem
 from app.research.status import ErrorCode
 from app.services import progress_events
+from app.services.content.images import HttpImageVerifier
 from app.services.content.reader import NoReader, PageReader, WebPageReader
 from app.services.embeddings import EmbeddingService
 from app.services.llm.base import ProviderError
@@ -100,6 +101,7 @@ def default_deps(research_id: uuid.UUID) -> ResearchDeps:
         persist_sources=_persist_sources,
         wikipedia=_wikipedia(),
         reader=_reader(),
+        images=HttpImageVerifier(),
     )
 
 

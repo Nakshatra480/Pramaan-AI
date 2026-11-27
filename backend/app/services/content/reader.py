@@ -38,6 +38,18 @@ class PageReader(Protocol):
         ...
 
 
+PAGE_CACHE = "page:v2"  # v2: pages also carry their figures
+
+
+def page_images(data: dict[str, object]) -> list[dict[str, str]]:
+    raw = data.get("images")
+    out: list[dict[str, str]] = []
+    for i in raw if isinstance(raw, list) else []:
+        if isinstance(i, dict) and isinstance(i.get("url"), str) and isinstance(i.get("caption"), str):
+            out.append({"url": i["url"], "caption": i["caption"]})
+    return out
+
+
 def apply(source: SourceItem, data: dict[str, object]) -> bool:
     """Copies a parsed page's passages and metadata onto a search result."""
     raw = data.get("passages")
@@ -45,6 +57,7 @@ def apply(source: SourceItem, data: dict[str, object]) -> bool:
     if not passages:
         return False
     source.passages = passages[:MAX_PASSAGES]
+    source.images = page_images(data)
     site = data.get("site_name")
     if isinstance(site, str) and site and source.publisher == source.domain:
         source.publisher = site[:300]
@@ -75,7 +88,7 @@ class WebPageReader:
         self.deadline_s = deadline_s
 
     async def _page(self, client: httpx.AsyncClient, url: str) -> dict[str, object] | None:
-        cached = await cache.get_json("page", {"url": url})  # public pages: shared across users, like search results
+        cached = await cache.get_json(PAGE_CACHE, {"url": url})  # public pages: shared across users, like search results
         if isinstance(cached, dict):
             return cached
         try:
@@ -85,11 +98,12 @@ class WebPageReader:
         parsed = await asyncio.to_thread(parse_html, page.body, page.url, encoding=page.encoding)  # CPU work off the event loop
         data: dict[str, object] = {
             "passages": parsed.passages()[:MAX_PASSAGES],
+            "images": [{"url": i.url, "caption": i.caption} for i in parsed.images],
             "site_name": parsed.site_name,
             "author": parsed.author,
             "published": parsed.published.isoformat() if parsed.published else None,
         }
-        await cache.set_json("page", {"url": url}, data, get_settings().cache_ttl_search_s)
+        await cache.set_json(PAGE_CACHE, {"url": url}, data, get_settings().cache_ttl_search_s)
         return data
 
     async def read(self, sources: list[SourceItem], *, limit: int) -> int:

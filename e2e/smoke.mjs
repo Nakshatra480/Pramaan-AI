@@ -230,7 +230,8 @@ await test("Listen narrates the report beside Share and Export", async (page, ct
   await page.getByRole("region", { name: "Report narration" }).waitFor();
   await page.waitForFunction(() => window.__spoken.length >= 3);
   const spoken = await page.evaluate(() => window.__spoken);
-  expect(spoken[0].startsWith("GLP-1"), "starts with the report title");
+  expect(spoken[0].startsWith("Cardiovascular outcomes of GLP-1"), "starts with the paper's title");
+  expect(spoken.slice(0, 3).includes("Abstract."), "reads the abstract next (sections, tables and figures: tests/speech.test.ts)");
   expect(!spoken.some((t) => /\[\d+\]/.test(t)), "citation markers are not read aloud");
   await page.getByRole("button", { name: "Pause narration" }).click();
   const n = await page.evaluate(() => window.__spoken.length);
@@ -252,7 +253,10 @@ await test("exports: styled PDF, Word and Markdown hold only the report", async 
   let [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("menuitem", { name: /^Markdown/ }).click()]);
   const md = await readDownload(dl);
   expect(dl.suggestedFilename().endsWith(".md"), "markdown file name");
-  expect(md.startsWith(`# ${title.slice(0, 20)}`) && /## Executive summary/.test(md) && /## Key findings/.test(md) && /## Sources/.test(md), "markdown sections");
+  expect(md.startsWith(`# ${title.slice(0, 20)}`) && /## Abstract/.test(md) && /## 1\. Introduction/.test(md) && /## References/.test(md), "markdown paper sections");
+  expect(/\*\*Table 1\.\*\* /.test(md) && /\n\| Evidence \| Population \| Reported effect \|\n\| --- \| --- \| --- \|\n/.test(md), "markdown table");
+  expect(/```mermaid\nflowchart LR\n/.test(md) && /\*Figure 1\. /.test(md), "markdown Mermaid diagram");
+  expect(!/Executive summary|Key findings/.test(md), "no generic headings");
   expect(!appOnly.test(md), "markdown has no app interface text");
 
   // Word: a real .docx (zip with word/document.xml)
@@ -267,7 +271,8 @@ await test("exports: styled PDF, Word and Markdown hold only the report", async 
   const frame = page.locator('iframe[title="Report for printing"]');
   await frame.waitFor({ state: "attached", timeout: 10000 });
   const html = await frame.evaluate((f) => f.srcdoc);
-  expect(html.includes(title.replace(/&/g, "&amp;")) && html.includes("Executive summary") && html.includes('class="sources"'), "print document has the report");
+  expect(html.includes(title.replace(/&/g, "&amp;")) && html.includes("<h2>Abstract</h2>") && html.includes('class="sources"'), "print document has the report");
+  expect(html.includes('<table class="data">') && /<div class="diagram"><svg/.test(html), "print document has the table and the diagram (as SVG)");
   expect(!/Research again|Follow-up question|Ask follow-up|Listen to this report/.test(html), "print document has no app interface");
   if (process.env.EXPORT_DIR) {
     const fs = await import("node:fs");
@@ -277,10 +282,27 @@ await test("exports: styled PDF, Word and Markdown hold only the report", async 
   }
 });
 
+await test("reports read like a research paper: abstract, numbered sections, a table and a diagram", async (page) => {
+  await signIn(page, "/research/r-glp1-cardio");
+  await page.locator("#abstract").waitFor({ timeout: 15000 });
+  const headings = await page.locator("main h2").allInnerTexts();
+  expect(headings[0] === "Abstract" && /^1\s*Introduction/.test(headings[1]), `paper headings (${headings.slice(0, 3).join(" | ")})`);
+  expect(!headings.some((h) => /Executive Summary|Key Findings|Detailed Analysis/i.test(h)), "no generic headings");
+  expect(headings.some((h) => /Limitations/.test(h)) && /Conclusion/.test(headings[headings.findIndex((h) => /Limitations/.test(h)) + 1]), "limitations come before the conclusion");
+  const table = page.locator("figure table");
+  await table.waitFor();
+  expect((await table.locator("tbody tr").count()) === 3, "the comparison table");
+  expect(/^Table 1\./.test(await page.locator("figure figcaption").first().innerText()), "numbered table caption");
+  await page.locator('figure [role="img"] svg').waitFor({ timeout: 15000 }); // Mermaid, loaded on demand
+  expect((await page.locator('figure [role="img"] svg .node').count()) >= 4, "the diagram is drawn");
+  const shot = await page.locator('figure [role="img"]').boundingBox();
+  expect(shot && shot.width > 200 && shot.height > 40, "the diagram has a real size");
+});
+
 await test("follow-ups: questions get a sourced answer, change requests a separate revised report", async (page) => {
   await signIn(page, "/research/r-glp1-cardio");
   await page.getByLabel("Follow-up question").waitFor({ timeout: 15000 });
-  const original = await page.locator("#summary").innerText();
+  const original = await page.locator("#abstract").innerText();
   await page.getByLabel("Follow-up question").fill("Which trial showed the biggest reduction?");
   await page.getByLabel("Ask follow-up").click();
   await page.getByText("Sources for this answer").waitFor({ timeout: 15000 });
@@ -288,8 +310,8 @@ await test("follow-ups: questions get a sourced answer, change requests a separa
   await page.getByLabel("Ask follow-up").click();
   await page.getByText(/Regenerating the report with your changes/).first().waitFor({ timeout: 15000 });
   await page.getByText("Revised report", { exact: true }).waitFor({ timeout: 90000 });
-  expect((await page.locator("#summary").innerText()) === original, "original report unchanged");
-  expect((await page.locator('[id^="rev-"][id$="-summary"]').count()) === 1, "revised report shown under the follow-up");
+  expect((await page.locator("#abstract").innerText()) === original, "original report unchanged");
+  expect((await page.locator('[id^="rev-"][id$="-abstract"]').count()) === 1, "revised report shown under the follow-up");
 });
 
 await browser.close();

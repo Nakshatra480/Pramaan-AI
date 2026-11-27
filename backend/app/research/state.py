@@ -32,6 +32,7 @@ class SourceItem:
     location: str | None = None
     db_id: uuid.UUID | None = None  # set once persisted
     passages: list[str] = field(default_factory=list)  # the page's own text, parsed with BeautifulSoup (when it could be read)
+    images: list[dict[str, str]] = field(default_factory=list)  # figures found on the page: {"url", "caption"}
 
 
 @dataclass
@@ -71,10 +72,21 @@ class ResearchPlan:
 
 @dataclass
 class ReportDraft:
-    summary: list[str]
-    findings: list[dict[str, Any]]  # {title, body, claims: [C#]}
-    analysis: list[dict[str, Any]]  # {heading, paragraphs}
+    """A research paper, before citations are resolved. Text cites verified claims as [C#].
+
+    sections: [{"heading": str, "blocks": [block, …]}] where a block is one of
+      {"type": "paragraph", "text": str}
+      {"type": "list", "items": [str]}
+      {"type": "table", "caption": str, "columns": [str], "rows": [{"cells": [str], "claims": [C#]}]}
+      {"type": "diagram", "caption": str, "code": str (Mermaid, built by the server), "claims": [C#]}
+      {"type": "figure", "caption": str, "url": str, "credit": str, "page_url": str, "source_key": str}
+    """
+
+    title: str
+    abstract: list[str]
+    sections: list[dict[str, Any]]
     limitations: list[str]
+    keywords: list[str] = field(default_factory=list)
 
 
 @dataclass

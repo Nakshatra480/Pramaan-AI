@@ -12,11 +12,12 @@ interface Props {
   size?: "default" | "hero";
 }
 
-/** Mic button for dictating a question. Pulses while listening; click again to stop. */
+/** Mic button for dictating a question. Pulses while listening; click again to stop. Spins while the recording is
+ *  transcribed or the dictation is cleaned up. */
 export function VoiceInputButton({ state, onClick, disabled, size = "default" }: Props) {
   const listening = state === "listening" || state === "starting";
-  const busy = state === "transcribing";
-  const label = busy ? "Transcribing your question" : listening ? "Stop voice input" : "Ask with your voice";
+  const busy = state === "transcribing" || state === "polishing";
+  const label = state === "transcribing" ? "Transcribing your question" : state === "polishing" ? "Cleaning up your question" : listening ? "Stop voice input" : "Ask with your voice";
   return (
     <Tooltip content={label}>
       <button

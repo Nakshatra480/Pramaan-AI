@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from app.research.llm import ResearchLLM
 from app.research.progress import ProgressReporter
 from app.research.state import ChunkHit, SourceItem
+from app.services.content.images import AcceptAllImages, ImageVerifier
 from app.services.content.reader import NoReader, PageReader
 from app.services.embeddings import EmbeddingService
 from app.services.search.openalex import AcademicSearch
@@ -30,3 +31,4 @@ class ResearchDeps:
     persist_sources: PersistSources
     wikipedia: EncyclopediaSearch = field(default_factory=NoWikipedia)
     reader: PageReader = field(default_factory=NoReader)  # opens and parses result pages (BeautifulSoup)
+    images: ImageVerifier = field(default_factory=AcceptAllImages)  # checks a report's figures are real, reachable images

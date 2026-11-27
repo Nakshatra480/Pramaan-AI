@@ -136,19 +136,40 @@ export interface ResearchSummaryDTO {
   revisionInstructions?: string | null;
 }
 
+/** A report block as the API sends it: every field present, unused ones null. */
+export interface ReportBlockDTO {
+  type: "paragraph" | "list" | "table" | "diagram" | "figure";
+  text: string | null;
+  items: string[] | null;
+  caption: string | null;
+  columns: string[] | null;
+  rows: string[][] | null;
+  code: string | null;
+  url: string | null;
+  credit: string | null;
+  sourceUrl: string | null;
+  sourceIndex: number | null;
+}
+
+export interface ReportDTO {
+  format?: "legacy" | "paper";
+  title?: string | null;
+  keywords?: string[];
+  summary: string[];
+  findings: { title: string; body: string; claimIds: string[] }[];
+  analysis: { heading: string; paragraphs: string[] }[];
+  sections?: { heading: string; blocks: ReportBlockDTO[] }[];
+  limitations: string[];
+  citations: { index: number; sourceId: string }[];
+}
+
 export interface ResearchDTO extends ResearchSummaryDTO {
   steps: StepDTO[];
   sources: SourceDTO[];
   sourceIds: string[];
   evidence: { id: string; sourceId: string; passage: string; relevance: number; location: string | null }[];
   claims: { id: string; text: string; status: ClaimStatus; confidence: number; sourceIds: string[]; evidenceIds: string[] }[];
-  report: {
-    summary: string[];
-    findings: { title: string; body: string; claimIds: string[] }[];
-    analysis: { heading: string; paragraphs: string[] }[];
-    limitations: string[];
-    citations: { index: number; sourceId: string }[];
-  } | null;
+  report: ReportDTO | null;
   followUps: {
     id: string;
     question: string;

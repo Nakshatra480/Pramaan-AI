@@ -268,20 +268,77 @@ export const RESEARCH: Research[] = [
       claim("c18", "Low real-world persistence may limit population-level benefit.", "supported", 0.78, ["S18"], ["e21"]),
     ],
     report: {
+      format: "paper",
+      title: "Cardiovascular outcomes of GLP-1 receptor agonists in adults without diabetes",
+      keywords: ["GLP-1 receptor agonists", "semaglutide", "major adverse cardiovascular events", "obesity"],
       summary: [
-        "Strong trial evidence shows semaglutide reduced major adverse cardiovascular events by about 20% in adults with obesity and established cardiovascular disease but without diabetes [1]. Meta-analytic evidence suggests a broader class effect, though trial populations differ [2].",
-        "Real-world persistence is low, which may limit benefits outside trials [3].",
+        "This review asks whether GLP-1 receptor agonists reduce cardiovascular events in people without diabetes. In the largest randomised trial, semaglutide reduced major adverse cardiovascular events by 20% relative to placebo in adults with obesity and established cardiovascular disease [1]. Pooled trial data suggest a 14% reduction across the drug class, although the populations studied differ [2]. Low persistence in routine practice, with about a third of patients still treated at twelve months, may limit the benefit outside trials [3].",
       ],
-      findings: [
-        { title: "A 20% reduction in MACE", body: "The largest trial reported a 20% relative reduction versus placebo [1].", claimIds: ["c16"] },
-        { title: "Likely a class effect", body: "Pooled analyses show a 14% reduction across agents, with heterogeneity [2].", claimIds: ["c17"] },
-        { title: "Persistence is a practical limit", body: "Only about a third of patients remain on therapy at 12 months [3].", claimIds: ["c18"] },
-      ],
-      analysis: [
+      findings: [],
+      analysis: [],
+      sections: [
         {
-          heading: "Interpreting the evidence",
-          paragraphs: [
-            "The primary trial enrolled patients with pre-existing cardiovascular disease, so results should not be generalised to primary prevention without further evidence [1]. The meta-analysis includes mostly diabetic populations, which is why the class-effect claim is only partially supported [2].",
+          heading: "Introduction",
+          blocks: [
+            {
+              type: "paragraph",
+              text: "GLP-1 receptor agonists were developed for type 2 diabetes and are now prescribed widely for obesity. Whether their cardiovascular benefit extends to people without diabetes determines how broadly they should be used for prevention [1].",
+            },
+          ],
+        },
+        {
+          heading: "Trial evidence in adults with obesity",
+          blocks: [
+            {
+              type: "paragraph",
+              text: "In adults with obesity and pre-existing cardiovascular disease but without diabetes, semaglutide reduced the composite of cardiovascular death, non-fatal myocardial infarction and non-fatal stroke by 20% compared with placebo [1].",
+            },
+            {
+              type: "table",
+              caption: "Reported effects of GLP-1 receptor agonists on cardiovascular outcomes",
+              columns: ["Evidence", "Population", "Reported effect"],
+              rows: [
+                ["Randomised trial (semaglutide)", "Obesity with cardiovascular disease, no diabetes", "20% relative reduction in major adverse cardiovascular events [1]"],
+                ["Meta-analysis of eight trials", "Mostly people with diabetes", "14% relative reduction across agents [2]"],
+                ["Routine clinical practice", "Patients starting therapy", "32% still on therapy after 12 months [3]"],
+              ],
+            },
+            {
+              type: "paragraph",
+              text: "Pooled analyses across eight trials report a 14% relative reduction across agents, which suggests a class effect, although heterogeneity between trials is substantial [2].",
+            },
+          ],
+        },
+        {
+          heading: "Persistence in routine care",
+          blocks: [
+            {
+              type: "paragraph",
+              text: "Only 32% of patients remained on therapy twelve months after starting it in routine clinical practice, far fewer than in the trials [3].",
+            },
+            {
+              type: "diagram",
+              caption: "From trial efficacy to population benefit [1][3]",
+              code: 'flowchart LR\n    n1["Trial efficacy<br>20% fewer events"]\n    n2["Treatment started<br>in practice"]\n    n3["32% still treated<br>after 12 months"]\n    n4["Smaller population<br>benefit"]\n    n1 --> n2\n    n2 --> n3\n    n3 --> n4',
+            },
+          ],
+        },
+        {
+          heading: "Discussion",
+          blocks: [
+            {
+              type: "paragraph",
+              text: "The primary trial enrolled people with established cardiovascular disease, so its result should not be extended to primary prevention without further evidence [1]. Because the pooled analysis draws mostly on people with diabetes, the class effect remains only partially supported for this population [2].",
+            },
+          ],
+        },
+        {
+          heading: "Conclusion",
+          blocks: [
+            {
+              type: "paragraph",
+              text: "For adults with obesity and cardiovascular disease but without diabetes, the best available trial shows a clinically meaningful reduction in cardiovascular events [1]; how much of it is realised in practice depends on keeping patients on treatment [3].",
+            },
           ],
         },
       ],

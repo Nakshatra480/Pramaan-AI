@@ -13,7 +13,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import date
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup, Tag
 
@@ -49,6 +49,15 @@ _WIKI_DROP = (
     ".noprint", ".shortdescription", ".mw-empty-elt", "table.wikitable", ".toc", "#toc", "figure", ".mw-file-description",
 )  # fmt: skip
 
+# Images that are page furniture rather than figures.
+_IMG_SKIP = re.compile(
+    r"(?:^|[/_.\-])(?:logos?|icons?|favicon|avatars?|sprites?|badges?|banners?|placeholder|pixel|spacer|blank|1x1|transparent|emoji|"
+    r"buttons?|ads?|advert|tracking|gravatar|author|profile|headshot|share|social|default)(?:[/_.\-]|$)",
+    re.I,
+)
+_REF_MARK = re.compile(r"\s*\[(?:\d{1,3}|[a-z]|citation needed|note \d+)\]", re.I)
+MAX_IMAGES = 4
+
 MIN_BLOCK = 40
 PASSAGE_TARGET = 420
 PASSAGE_MAX = 650
@@ -61,6 +70,12 @@ class Block:
 
 
 @dataclass
+class PageImage:
+    url: str
+    caption: str
+
+
+@dataclass
 class ParsedPage:
     title: str = ""
     site_name: str = ""
@@ -68,6 +83,7 @@ class ParsedPage:
     description: str = ""
     published: date | None = None
     blocks: list[Block] = field(default_factory=list)
+    images: list[PageImage] = field(default_factory=list)
 
     @property
     def text(self) -> str:
@@ -178,6 +194,91 @@ def _row_text(tr: Tag) -> str:
     return " | ".join(c for c in cells if c)
 
 
+def _dimension(value: object) -> int | None:
+    m = re.match(r"\s*(\d+)", str(value or ""))
+    return int(m.group(1)) if m else None
+
+
+def _image_url(img: Tag, base: str | None) -> str | None:
+    """The best https URL for an <img> (largest srcset candidate first), or None for furniture and unusable images."""
+    src = None
+    srcset = str(img.get("srcset") or img.get("data-srcset") or "")
+    if srcset:
+        options = []
+        for part in srcset.split(","):
+            bits = part.strip().split()
+            if bits:
+                size = re.match(r"(\d+(?:\.\d+)?)[wx]", bits[1]) if len(bits) > 1 else None
+                options.append((float(size.group(1)) if size else 1.0, bits[0]))
+        src = max(options)[1] if options else None
+    src = src or str(img.get("data-src") or img.get("src") or "")
+    if not src or src.startswith("data:"):
+        return None
+    w, h = _dimension(img.get("width")), _dimension(img.get("height"))
+    if (w is not None and w < 200) or (h is not None and h < 120):
+        return None
+    return usable_image_url(urljoin(base or "", src.strip()))
+
+
+def usable_image_url(url: str) -> str | None:
+    """An https, non-SVG image URL that doesn't look like a logo, icon or tracker; None otherwise."""
+    url = url.strip()
+    if url.startswith("//"):
+        url = "https:" + url
+    p = urlparse(url)
+    if p.scheme != "https" or not p.hostname or p.path.lower().endswith(".svg") or _IMG_SKIP.search(p.path):
+        return None
+    query = "&".join(q for q in p.query.split("&") if q and not q.lower().startswith("utm_"))
+    return p._replace(query=query, fragment="").geturl()
+
+
+def trim_caption(text: str, limit: int = 200) -> str:
+    """A caption of at most `limit` characters, cut at a sentence end if possible, else at a word, with "…"."""
+    text = _REF_MARK.sub("", " ".join(text.split())).strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    end = max(cut.rfind(". "), cut.rfind("; "))
+    if end >= 60:
+        return cut[: end + 1]
+    return cut.rsplit(" ", 1)[0].rstrip(",;:") + "…"
+
+
+def _caption(el: Tag | None) -> str:
+    return trim_caption(_clean(el.get_text(" "))) if el is not None else ""
+
+
+def _inside_noise(el: Tag) -> bool:
+    return el.find_parent(["nav", "footer", "aside", "header", "form"]) is not None or any(_noisy(a) for a in el.parents if isinstance(a, Tag))
+
+
+def _images(soup: BeautifulSoup, url: str | None, title: str) -> list[PageImage]:
+    """Figures worth showing in a report: Wikipedia's lead image, captioned article figures, then the page's share
+    image. Each needs a caption (the share image falls back to the page title)."""
+    found: list[PageImage] = []
+    seen: set[str] = set()
+
+    def add(img: Tag | None, caption: str) -> None:
+        u = _image_url(img, url) if img is not None else None
+        if u and caption and u not in seen and len(found) < MAX_IMAGES:
+            seen.add(u)
+            found.append(PageImage(u, caption))
+
+    if _is_wikipedia(url):
+        for box in soup.select(".infobox-image, td.infobox-image"):
+            add(box.find("img"), _caption(soup.select_one(".infobox-caption")))
+    for fig in soup.find_all("figure"):
+        if not _inside_noise(fig):
+            img = fig.find("img")
+            add(img, _caption(fig.find("figcaption")) or (trim_caption(_clean(str(img.get("alt") or ""))) if isinstance(img, Tag) else ""))
+    # The share image only with a real description: a page title ("Carbon Capture") makes a useless caption.
+    share = usable_image_url(_meta(soup, "og:image", "twitter:image") or "")
+    alt = trim_caption(_meta(soup, "og:image:alt", "twitter:image:alt"))
+    if share and share not in seen and len(alt) >= 25 and len(found) < MAX_IMAGES:
+        found.append(PageImage(share, alt))
+    return found
+
+
 def parse_html(html: str | bytes, url: str | None = None, *, encoding: str | None = None) -> ParsedPage:
     """Parse a page into title, metadata and content blocks. Never raises on malformed HTML."""
     soup = BeautifulSoup(html, "lxml", from_encoding=encoding) if isinstance(html, bytes) else BeautifulSoup(html, "lxml")
@@ -194,6 +295,7 @@ def parse_html(html: str | bytes, url: str | None = None, *, encoding: str | Non
         page.published = _date(str(t["datetime"]))
     if page.author.startswith(("http://", "https://")):
         page.author = ""  # article:author is sometimes a profile URL
+    page.images = _images(soup, url, page.title)  # before noise removal, which strips <img>
 
     for el in soup(NOISE_TAGS):
         el.decompose()

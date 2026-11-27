@@ -244,9 +244,9 @@ def test_token_budgets_grow_with_the_number_of_claims() -> None:
 
 def test_report_shape_by_mode_and_response_length() -> None:
     quick, standard, deep = (report_shape(m, "balanced", 12) for m in ("quick", "standard", "deep"))
-    assert quick.findings < standard.findings < deep.findings and quick.tokens < standard.tokens < deep.tokens
+    assert quick.body < standard.body < deep.body and quick.tokens < standard.tokens < deep.tokens
     assert report_shape("standard", "concise", 12).tokens < standard.tokens < report_shape("standard", "comprehensive", 12).tokens
-    assert report_shape("deep", "balanced", 2).findings == 2  # never asks for more findings than there are claims
+    assert report_shape("deep", "balanced", 2).body == 1  # never asks for more sections than the claims can fill
 
 
 async def test_response_length_preference_reaches_the_pipeline(client: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:

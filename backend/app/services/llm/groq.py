@@ -31,8 +31,19 @@ class GroqProvider(HostedProvider):
         super().__init__(base_url, api_key, timeout_s=timeout_s, connect_timeout_s=connect_timeout_s, retries=retries, transport=transport)
         self.model = model
         self._preflight_ok_until = 0.0
+        # gpt-oss models take a reasoning-effort hint; low effort keeps short or well-specified tasks fast and
+        # leaves more of the output budget for the answer itself.
+        self.supports_reasoning_effort = model.startswith("openai/gpt-oss")
 
-    async def generate(self, messages: list[ChatMessage], *, json: bool = False, temperature: float = 0.2, max_tokens: int | None = None) -> str:
+    async def generate(
+        self,
+        messages: list[ChatMessage],
+        *,
+        json: bool = False,
+        temperature: float = 0.2,
+        max_tokens: int | None = None,
+        reasoning_effort: str | None = None,
+    ) -> str:
         self._require_key("generate", "GROQ_API_KEY")
         payload: dict[str, Any] = {
             "model": self.model,
@@ -44,6 +55,8 @@ class GroqProvider(HostedProvider):
             payload["max_completion_tokens"] = max_tokens
         if json:
             payload["response_format"] = {"type": "json_object"}
+        if reasoning_effort and self.supports_reasoning_effort:
+            payload["reasoning_effort"] = reasoning_effort
         data = await self._request("POST", "/chat/completions", json=payload, what="generate")
         try:
             content = data["choices"][0]["message"]["content"]

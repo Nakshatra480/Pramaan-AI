@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     groq_timeout_s: float = 60.0
     # Voice input fallback (browsers without built-in speech recognition): Groq Whisper.
     groq_stt_model: str = "whisper-large-v3-turbo"
+    # Cleans up dictated questions (fillers, misheard words, spelling). A small, fast model with its own rate limit.
+    groq_refine_model: str = "openai/gpt-oss-20b"
     max_audio_bytes: int = 10 * 1024 * 1024  # ~10 min of Opus; the composer stops recording after 2 min
     speech_per_minute: int = 12
 

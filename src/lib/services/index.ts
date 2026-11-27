@@ -16,7 +16,7 @@ import { apiProjectService } from "@/lib/api/projects";
 import { apiResearchService } from "@/lib/api/research";
 import { apiSearchAll } from "@/lib/api/search";
 import { apiSourceService } from "@/lib/api/sources";
-import { apiTranscribe } from "@/lib/api/speech";
+import { apiRefine, apiTranscribe, type Dictation } from "@/lib/api/speech";
 import { authService } from "@/lib/mock/auth";
 import { db } from "@/lib/mock/db";
 import { libraryService } from "@/lib/mock/library";
@@ -25,6 +25,7 @@ import { projectService } from "@/lib/mock/projects";
 import { researchService } from "@/lib/mock/research";
 import { searchAll } from "@/lib/mock/search";
 import { sourceService } from "@/lib/mock/sources";
+import { tidyDictation } from "@/lib/speech/tidy";
 
 const api = DATA_SOURCE === "api";
 
@@ -43,8 +44,14 @@ export const services = {
   sources,
   preferences: preferencesService,
   search: (api ? apiSearchAll : searchAll) as typeof searchAll,
-  /** Server-side transcription for voice input where the browser can't transcribe itself (API mode only). */
-  speech: { transcribe: api ? apiTranscribe : null },
+  /**
+   * Voice input. `transcribe`: server-side transcription where the browser can't transcribe itself (API mode only).
+   * `refine`: cleans up a dictation (fillers, misheard words, spelling) — the API's model in API mode, local rules in demo mode.
+   */
+  speech: {
+    transcribe: api ? apiTranscribe : null,
+    refine: api ? apiRefine : async (text: string): Promise<Dictation> => ({ text: tidyDictation(text), original: text }),
+  },
   /** Change feed — mock store updates, or API mutations/polls. */
   subscribe: api ? apiEvents.subscribe : db.subscribe,
 };
